@@ -51,3 +51,14 @@
   .button:hover {
     background-color: #c9c9c9;
   }
+
+  .text {
+    margin-top: 2rem;
+    text-align: center;
+    color:#c9c9c9;
+  }
+  
+  .text a {
+    color: var(--foreground);
+    font-size: 0.95rem;
+  }

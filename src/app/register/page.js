@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import styles from './page.module.css';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function Register() {
   const [form, setForm] = useState({ username: '', email: '', password: '' });
@@ -60,6 +61,10 @@ export default function Register() {
           />
         </label>
         <button type="submit" className={styles.button}>Register</button>
+
+        <p className={styles.text}>
+        Already registered? <Link href="/login">Sign In</Link>
+        </p>
       </form>
     </div>
   );
