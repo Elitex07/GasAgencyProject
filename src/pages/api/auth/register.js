@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { connectToDatabase } from '../../../lib/mongodb';
+import { connectToDatabase } from '../../../lib/mongo';
 import { User } from '../../../models/user';
 
 export default async function handler(req, res) {
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
     const existingUser = await User.findOne({ email });
     const existingUsername = await User.findOne({ username });
-    if (existingUser || existingUsername) return res.status(400).json({ message: 'Email already exists' });
+    if (existingUser || existingUsername) return res.status(400).json({ message: 'User already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -25,6 +25,7 @@ export default async function handler(req, res) {
 
     res.status(201).json({ message: 'User registered successfully' });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Internal server error' });
   }
 }

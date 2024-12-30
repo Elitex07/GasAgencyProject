@@ -8,8 +8,10 @@ export default function LandingPage() {
   const router = useRouter();
 
   const handleSignUp = () => {
-    console.log("Sign up clicked");
     router.push("/register");
+  };
+  const handleSignIn = () => {
+    router.push("/login");
   };
 
   return (
@@ -18,7 +20,7 @@ export default function LandingPage() {
         <div className={styles.logo}>Gas Agency</div>
         <ul className={styles.navLinks}>
           <li className={styles.navItem2} onClick={handleSignUp}>Sign Up</li>
-          <li className={styles.navItem}>Sign In</li>
+          <li className={styles.navItem} onClick={handleSignIn}>Sign In</li>
         </ul>
       </nav>
       <main className={styles.mainContent}>
@@ -34,6 +36,7 @@ export default function LandingPage() {
         </p>
         <button
           className={`${styles.ctaButton} ${hover ? styles.ctaHover : ""}`}
+          onClick={handleSignIn}
         >
           Book Now
         </button>

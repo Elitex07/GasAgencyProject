@@ -3,42 +3,32 @@ import { useState } from 'react';
 import styles from './page.module.css';
 import { useRouter } from 'next/navigation';
 
-export default function Register() {
-  const [form, setForm] = useState({ username: '', email: '', password: '' });
+export default function Login() {
+  const [form, setForm] = useState({ email: '', password: '' });
   const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const res = await fetch('/api/auth/register', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     });
 
     const data = await res.json();
-    if(data.message == 'User already exists') {
-      alert("Maybe redirect?");
-      router.push('/login');
+    if(data.message == 'Invalid credentials') {
+      alert("Invalid credentials");
       return;
     }
     alert(data.message);
+    router.push('/dashboard');
   };
 
   return (
     <div className={styles.container}>
       <form className={styles.form} onSubmit={handleSubmit}>
-        <h2 className={styles.title}>Register</h2>
-        <label className={styles.label}>
-          Username
-          <input
-            type="text"
-            name="username"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            className={styles.input}
-          />
-        </label>
+        <h2 className={styles.title}>Login</h2>
         <label className={styles.label}>
           Email
           <input
@@ -59,7 +49,7 @@ export default function Register() {
             className={styles.input}
           />
         </label>
-        <button type="submit" className={styles.button}>Register</button>
+        <button type="submit" className={styles.button}>Login</button>
       </form>
     </div>
   );

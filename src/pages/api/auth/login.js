@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { connectToDatabase } from '../../../lib/mongodb';
+import { connectToDatabase } from '../../../lib/mongo';
 import { User } from '../../../models/user';
 
 export default async function handler(req, res) {
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
 
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if ((!email && !username) || !password) {
     return res.status(400).json({ message: 'All fields are required' });
   }
 
