@@ -43,10 +43,29 @@
 .navItem {
   cursor: pointer;
   transition: color 0.3s;
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #ffffff;
+  padding: 0.4rem 0.82rem;
+  border-radius: 5px;
+}
+
+.navItem2 {
+  cursor: pointer;
+  transition: color 0.3s;
+  background: none;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  padding: 0.4rem 0.82rem;
+  border-radius: 5px;
 }
 
 .navItem:hover {
-  color: #0070f3;
+  background-color: #c9c9c9;
+}
+
+.navItem2:hover {
+  background-color: #1d1d1d;
 }
 
 /* Main Content */

@@ -10,7 +10,7 @@ export default function LandingPage() {
       <nav className={styles.navbar}>
         <div className={styles.logo}>Gas Agency</div>
         <ul className={styles.navLinks}>
-          <li className={styles.navItem}>Sign Up</li>
+          <li className={styles.navItem2}>Sign Up</li>
           <li className={styles.navItem}>Sign In</li>
         </ul>
       </nav>
