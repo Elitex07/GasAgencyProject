@@ -1,16 +1,23 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
 export default function LandingPage() {
   const [hover, setHover] = useState(false);
+  const router = useRouter();
+
+  const handleSignUp = () => {
+    console.log("Sign up clicked");
+    router.push("/register");
+  };
 
   return (
     <div className={styles.container}>
       <nav className={styles.navbar}>
         <div className={styles.logo}>Gas Agency</div>
         <ul className={styles.navLinks}>
-          <li className={styles.navItem2}>Sign Up</li>
+          <li className={styles.navItem2} onClick={handleSignUp}>Sign Up</li>
           <li className={styles.navItem}>Sign In</li>
         </ul>
       </nav>
@@ -32,6 +39,7 @@ export default function LandingPage() {
         </button>
         <button
           className={`${styles.signupButton} ${hover ? styles.signupHover : ""}`}
+          onClick={handleSignUp}
         >
           Sign up
         </button>

@@ -37,7 +37,6 @@
 
 .navItem {
   cursor: pointer;
-  transition: color 0.3s;
   background-color: #ffffff;
   color: #000000;
   border: 2px solid #ffffff;
@@ -47,7 +46,6 @@
 
 .navItem2 {
   cursor: pointer;
-  transition: color 0.3s;
   background: none;
   border: 2px solid #ffffff;
   color: #ffffff;
