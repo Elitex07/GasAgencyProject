@@ -22,8 +22,10 @@ export default function Login() {
       alert("Invalid credentials");
       return;
     }
-    alert(data.message);
-    router.push('/dashboard');
+    if(res.ok) {
+      localStorage.setItem('token', data.token);
+      router.push('/dashboard');
+    };
   };
 
   return (
