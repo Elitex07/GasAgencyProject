@@ -165,67 +165,124 @@ export default function Dashboard() {
           </ul>
         </nav>
         <div className={styles.sidebar}>
-          <button className={styles.sidebarButton} onClick={() => setSelectedOption('personalInfo')}>Personal Information</button>
-          <button className={styles.sidebarButton} onClick={() => setSelectedOption('bookings')}>Bookings</button>
+            {user.type !== 'admin' && (
+            <>
+             <button className={styles.sidebarButton} onClick={() => setSelectedOption('personalInfo')}>Personal Information</button>
+             <button className={styles.sidebarButton} onClick={() => setSelectedOption('bookings')}>Bookings</button>
+            </>
+            )}
           {user.type === 'admin' && (
-            <button className={styles.sidebarButton} onClick={() => setSelectedOption('manageUsers')}>Manage Users</button>
+            <>
+                <button className={styles.sidebarButton} onClick={() => setSelectedOption('manageUsers')}>Manage Users</button>
+                <button className={styles.sidebarButton} onClick={() => setSelectedOption('manageBookings')}>Manage Bookings</button>
+            </>
           )}
         </div>
         <div className={styles.content}>
-          {selectedOption === 'personalInfo' && (
-            <>
-              <h2 className={styles.headings}>Welcome, {user.username}</h2>
-              <div className={styles.form}>
-                <h3 className={styles.headings}>Update Your Information</h3>
-                <input
-                  type="text"
-                  placeholder="New Username"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  className={styles.input}
-                />
-                <input
-                  type="text"
-                  placeholder="New Address"
-                  value={newAddress}
-                  onChange={(e) => setNewAddress(e.target.value)}
-                  className={styles.input}
-                />
-                <button className={styles.button} onClick={handleUpdateUser}>Update</button>
-              </div>
-            </>
-          )}
-          {selectedOption === 'bookings' && (
-            <>
-              <h3 className={styles.headings}>Your Bookings:</h3>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Booked On</th>
-                    <th>Delivered</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {user.bookings.map((booking) => (
-                    <tr key={booking._id}>
-                      <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
-                      <td>{booking.delivered ? 'Yes' : 'No'}</td>
+            {selectedOption === 'personalInfo' && (
+              <>
+                <h2 className={styles.headings}>Welcome, {user.username}</h2>
+                <table className={styles.invisibleTable}>
+                  <tbody>
+                    <tr>
+                      <td><strong>Username:</strong></td>
+                      <td>{user.username}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className={styles.form}>
-                <h3 className={styles.headings}>Create a Booking</h3>
-                <input
-                  type="date"
-                  value={newBookingDate}
-                  onChange={(e) => setNewBookingDate(e.target.value)}
-                  className={styles.input}
-                />
-                <button className={styles.button} onClick={handleCreateBooking}>Book Now</button>
-              </div>
-            </>
-          )}
+                    <tr>
+                      <td><strong>Email:</strong></td>
+                      <td>{user.email}</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Address:</strong></td>
+                      <td>{user.address}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div className={styles.form}>
+                  <h3 className={styles.headings}>Update Your Information</h3>
+                  <div className={styles.inputGroup}>
+                    <input
+                      type="text"
+                      placeholder="New Username"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      className={styles.input}
+                    />
+                  </div>
+                  <div className={styles.inputGroup}>
+                    <input
+                      type="text"
+                      placeholder="New Address"
+                      value={newAddress}
+                      onChange={(e) => setNewAddress(e.target.value)}
+                      className={styles.input}
+                    />
+                  </div>
+                  <button className={styles.button} onClick={handleUpdateUser}>Update</button>
+                </div>
+              </>
+            )}
+            {selectedOption === 'bookings' && (
+              <>
+                <h3 className={styles.headings}>Your Bookings:</h3>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Booked On</th>
+                      <th>Delivered</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {user.bookings.map((booking) => (
+                      <tr key={booking._id}>
+                        <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
+                        <td>{booking.delivered ? 'Yes' : 'No'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className={styles.form} style={{ marginTop: '2rem' }}>
+                  <h3 className={styles.headings}>Create a Booking</h3>
+                  <input
+                    type="date"
+                    value={newBookingDate}
+                    onChange={(e) => setNewBookingDate(e.target.value)}
+                    className={styles.input}
+                    style={{ marginBottom: '0.5rem' }}
+                  />
+                  <button className={styles.button} onClick={handleCreateBooking}>Book Now</button>
+                </div>
+              </>
+            )}
+              {selectedOption === 'manageBookings' && (
+                  <>
+                    <h3 className={styles.headings}>Manage Bookings:</h3>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Booked On</th>
+                          <th>Delivered</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allBookings.map((booking) => (
+                          <tr key={booking._id}>
+                            <td>{booking.user.username}</td>
+                            <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
+                            <td>{booking.delivered ? 'Yes' : 'No'}</td>
+                            <td>
+                              <button className={styles.button} onClick={() => handleBookingStatusChange(booking._id, !booking.delivered)}>
+                                {booking.delivered ? 'Mark as Undelivered' : 'Mark as Delivered'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
           {selectedOption === 'manageUsers' && user.type === 'admin' && (
             <>
               <h3 className={styles.headings}>Manage Users:</h3>
