@@ -3,10 +3,13 @@ import { useState } from 'react';
 import styles from './page.module.css';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import CustomAlert from '../CustomAlert';
 
 export default function Register() {
   const [form, setForm] = useState({ username: '', email: '', password: '' });
   const router = useRouter();
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,7 +22,8 @@ export default function Register() {
 
     const data = await res.json();
     if(data.message == 'User already exists') {
-      alert("Maybe redirect?");
+      setAlertMessage(`Email already in use`);
+      setShowAlert(true);
       router.push('/login');
       return;
     }
@@ -66,6 +70,7 @@ export default function Register() {
         Already registered? <Link href="/login">Sign In</Link>
         </p>
       </form>
+      {showAlert && <CustomAlert message={alertMessage} onClose={() => setShowAlert(false)} />}
     </div>
   );
 }

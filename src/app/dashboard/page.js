@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import styles from './page.module.css';
 import { useRouter } from 'next/navigation';
+import CustomAlert from '../CustomAlert';
 
 export default function Dashboard() {
     const router = useRouter();
@@ -12,6 +13,8 @@ export default function Dashboard() {
     const [newUsername, setNewUsername] = useState('');
     const [newAddress, setNewAddress] = useState('');
     const [selectedOption, setSelectedOption] = useState('personalInfo');
+    const [showAlert, setShowAlert] = useState(false);
+    const [alertMessage, setAlertMessage] = useState('');
   
     useEffect(() => {
       const fetchUser = async () => {
@@ -54,7 +57,8 @@ export default function Dashboard() {
 
     const handleCreateBooking = async () => {
         if (!user.address) {
-            alert('Please provide a valid address before creating a booking.');
+          setAlertMessage('Please update your address before booking');
+          setShowAlert(true);
             return;
         }
 
@@ -158,6 +162,7 @@ export default function Dashboard() {
   
     return (
         <div className={styles.container}>
+        {showAlert && <CustomAlert message={alertMessage} onClose={() => setShowAlert(false)} />}
         <nav className={styles.navbar}>
           <div className={styles.logo}>Gas Agency</div>
           <ul className={styles.navLinks}>
