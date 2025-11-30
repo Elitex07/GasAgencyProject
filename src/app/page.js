@@ -1,10 +1,9 @@
-"use client"; 
+"use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
 export default function LandingPage() {
-  const [hover, setHover] = useState(false);
   const router = useRouter();
 
   const handleSignUp = () => {
@@ -24,24 +23,20 @@ export default function LandingPage() {
         </ul>
       </nav>
       <main className={styles.mainContent}>
-        <h1
-          className={styles.title}
-          onMouseEnter={() => setHover(true)}
-          onMouseLeave={() => setHover(false)}
-        >
+        <h1 className={styles.title}>
           Welcome to Gas Agency
         </h1>
         <p className={styles.description}>
           Experience seamless gas delivery services right to your doorstep, anytime, with just a single click.
         </p>
         <button
-          className={`${styles.ctaButton} ${hover ? styles.ctaHover : ""}`}
+          className={styles.ctaButton}
           onClick={handleSignIn}
         >
           Book Now
         </button>
         <button
-          className={`${styles.signupButton} ${hover ? styles.signupHover : ""}`}
+          className={styles.signupButton}
           onClick={handleSignUp}
         >
           Sign up
