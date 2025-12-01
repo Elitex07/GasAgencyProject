@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
-const InventorySchema = new mongoose.Schema({
+const InventorySchema = new Schema({
     item: { type: String, required: true, unique: true }, // e.g., 'Cylinder_14kg', 'Pipeline_Unit'
     quantity: { type: Number, default: 0 }, // Current stock for cylinders
     costPrice: { type: Number, required: true }, // Cost per unit/cylinder
@@ -8,4 +8,4 @@ const InventorySchema = new mongoose.Schema({
     lastUpdated: { type: Date, default: Date.now },
 });
 
-export default mongoose.models.Inventory || mongoose.model('Inventory', InventorySchema);
+export const Inventory = models.Inventory || model('Inventory', InventorySchema);

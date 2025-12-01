@@ -3,6 +3,7 @@ import { Schema, model, models } from 'mongoose';
 const BookingSchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     bookedOn: { type: Date, required: true },
+    item: { type: String, required: true }, // e.g., 'Cylinder_14kg'
     status: {
         type: String,
         enum: ['Pending', 'Confirmed', 'Out for Delivery', 'Delivered', 'Cancelled'],

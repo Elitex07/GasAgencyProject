@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import styles from './page.module.css';
+import styles from '../../styles/login.module.css';
 import { useRouter } from 'next/navigation';
 import CustomAlert from '../CustomAlert';
 import Link from 'next/link';
@@ -21,12 +21,12 @@ export default function Login() {
     });
 
     const data = await res.json();
-    if(data.message == 'Invalid credentials') {
+    if (data.message == 'Invalid credentials') {
       setAlertMessage(`Invalid Credentials`);
       setShowAlert(true);
       return;
     }
-    if(res.ok) {
+    if (res.ok) {
       localStorage.setItem('token', data.token);
       router.push('/dashboard');
     };
@@ -57,9 +57,9 @@ export default function Login() {
           />
         </label>
         <button type="submit" className={styles.button}>Login</button>
-        
+
         <p className={styles.text}>
-        New to Gas agency? <Link href="/register">Sign Up</Link>
+          New to Gas agency? <Link href="/register">Sign Up</Link>
         </p>
       </form>
       {showAlert && <CustomAlert message={alertMessage} onClose={() => setShowAlert(false)} />}

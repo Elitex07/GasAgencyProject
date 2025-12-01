@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongo';
-import Transaction from '@/models/transaction';
-import MeterReading from '@/models/meterReading';
-import Booking from '@/models/booking';
-import Inventory from '@/models/inventory';
+import { Transaction } from '@/models/transaction';
+import { MeterReading } from '@/models/meterReading';
+import { Booking } from '@/models/booking';
+import { Inventory } from '@/models/inventory';
 import { verifyToken } from '@/lib/auth';
 
 export async function GET(req) {
@@ -26,23 +26,33 @@ export async function GET(req) {
         const netRevenue = totalRevenue - totalRefunds;
 
         // 3. Calculate Costs
-        // We need Cost Price from Inventory
-        const cylinderInventory = await Inventory.findOne({ item: 'Cylinder_14kg' });
-        const pipelineInventory = await Inventory.findOne({ item: 'Pipeline_Unit' });
+        // Fetch all inventory items to get their cost prices
+        const inventoryItems = await Inventory.find({});
+        const priceMap = {}; // item name -> cost price
+        inventoryItems.forEach(inv => {
+            priceMap[inv.item] = inv.costPrice;
+        });
 
-        const cylinderCostPrice = cylinderInventory ? cylinderInventory.costPrice : 0;
-        const pipelineUnitCostPrice = pipelineInventory ? pipelineInventory.costPrice : 0;
+        // Cost from Bookings (Delivered)
+        // We need to fetch bookings to check which item was booked
+        const deliveredBookings = await Booking.find({ status: 'Delivered' });
+        let totalBookingCost = 0;
 
-        // Cost from Cylinders (Delivered)
-        const deliveredBookings = await Booking.countDocuments({ status: 'Delivered' });
-        const totalCylinderCost = deliveredBookings * cylinderCostPrice;
+        deliveredBookings.forEach(booking => {
+            const itemCost = priceMap[booking.item] || 0; // Default to 0 if item not found or no item specified
+            totalBookingCost += itemCost;
+        });
 
         // Cost from Pipeline (Total Usage)
+        // Assuming 'Pipeline_Unit' is the item name for pipeline usage in inventory, or we use a fixed cost if not tracked there.
+        // For now, let's try to find 'Pipeline_Unit' in our price map, or fallback to a default if needed.
+        const pipelineUnitCostPrice = priceMap['Pipeline_Unit'] || 0;
+
         const readings = await MeterReading.find({});
         const totalPipelineUsage = readings.reduce((acc, curr) => acc + curr.usage, 0);
         const totalPipelineCost = totalPipelineUsage * pipelineUnitCostPrice;
 
-        const totalCost = totalCylinderCost + totalPipelineCost;
+        const totalCost = totalBookingCost + totalPipelineCost;
 
         // 4. Net Profit
         const netProfit = netRevenue - totalCost;
@@ -66,7 +76,7 @@ export async function GET(req) {
                 netProfit,
                 totalDues,
                 breakdown: {
-                    cylinderCost: totalCylinderCost,
+                    bookingCost: totalBookingCost,
                     pipelineCost: totalPipelineCost,
                     refunds: totalRefunds
                 }
@@ -74,6 +84,7 @@ export async function GET(req) {
         }, { status: 200 });
 
     } catch (error) {
+        console.log(error);
         return NextResponse.json({ message: 'Error calculating financials', error: error.message }, { status: 500 });
     }
 }

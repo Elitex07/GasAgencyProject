@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
-import styles from './page.module.css';
+import styles from '../../styles/dashboard.module.css';
 import { useRouter } from 'next/navigation';
 import CustomAlert from '../CustomAlert';
 
@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [newBookingDate, setNewBookingDate] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newAddress, setNewAddress] = useState({ house: '', city: '', pincode: '' });
+  const [selectedItem, setSelectedItem] = useState('');
   const [selectedOption, setSelectedOption] = useState('personalInfo');
   const [usageStats, setUsageStats] = useState({ cityStats: {}, pincodeStats: {} });
   const [showAlert, setShowAlert] = useState(false);
@@ -45,7 +46,7 @@ export default function Dashboard() {
       });
 
       if (!res.ok) {
-        localStorage.removeItem('token'); // Clear invalid token
+        localStorage.removeItem('token');
         router.push('/login');
         return;
       }
@@ -54,6 +55,13 @@ export default function Dashboard() {
       setUser(data.user);
       setAllBookings(data.allBookings);
 
+      // Fetch Inventory for all users
+      const inventoryRes = await fetch('/api/inventory', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const inventoryData = await inventoryRes.json();
+      setInventory(inventoryData.inventory || []);
+
       if (data.user.type === 'admin') {
         const usersRes = await fetch('/api/users', {
           headers: { Authorization: `Bearer ${token}` },
@@ -61,28 +69,18 @@ export default function Dashboard() {
         const usersData = await usersRes.json();
         setAllUsers(usersData.users);
 
-        // Fetch Admin Transactions
         const transactionsRes = await fetch('/api/payments', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const transactionsData = await transactionsRes.json();
         setTransactions(transactionsData.transactions || []);
 
-        // Fetch Usage Stats
         const statsRes = await fetch('/api/analytics/usage-by-area', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const statsData = await statsRes.json();
         setUsageStats(statsData);
 
-        // Fetch Inventory
-        const inventoryRes = await fetch('/api/inventory', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const inventoryData = await inventoryRes.json();
-        setInventory(inventoryData.inventory || []);
-
-        // Fetch Financials
         const financialsRes = await fetch('/api/analytics/financials', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -96,14 +94,12 @@ export default function Dashboard() {
         const readingsData = await readingsRes.json();
         setMeterReadings(readingsData.readings);
 
-        // Fetch User Transactions
         const transactionsRes = await fetch('/api/payments', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const transactionsData = await transactionsRes.json();
         setTransactions(transactionsData.transactions || []);
       }
-
     };
 
     fetchUser();
@@ -121,6 +117,12 @@ export default function Dashboard() {
       return;
     }
 
+    if (!selectedItem) {
+      setAlertMessage('Please select an item');
+      setShowAlert(true);
+      return;
+    }
+
     const token = localStorage.getItem('token');
     const res = await fetch('/api/bookings', {
       method: 'POST',
@@ -128,15 +130,12 @@ export default function Dashboard() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ bookedOn: newBookingDate }),
+      body: JSON.stringify({ bookedOn: newBookingDate, item: selectedItem }),
     });
 
     if (res.ok) {
       const data = await res.json();
-      setUser((prevUser) => ({
-        ...prevUser,
-        bookings: [...prevUser.bookings, data.booking],
-      }));
+      setAllBookings((prev) => [...prev, data.booking]);
       setNewBookingDate('');
       setAlertMessage('Refill requested successfully!');
       setShowAlert(true);
@@ -397,7 +396,7 @@ export default function Dashboard() {
         ];
       } else {
         // Cylinder Stats
-        const myBookings = user.bookings || [];
+        const myBookings = allBookings || [];
         const totalBookings = myBookings.length;
         const pendingDeliveries = myBookings.filter(b => b.status !== 'Delivered' && b.status !== 'Cancelled').length;
         const totalSpent = myBookings.filter(b => b.status === 'Delivered').length * 1200;
@@ -447,21 +446,20 @@ export default function Dashboard() {
     }
   };
 
-  const stats = getStats();
-
-  if (!user) return <div className={styles.loading}>Loading...</div>;
+  if (!user) {
+    return <div className={styles.container}><p style={{ padding: '2rem' }}>Loading...</p></div>;
+  }
 
   return (
     <div className={styles.container}>
-      {showAlert && <CustomAlert message={alertMessage} onClose={() => setShowAlert(false)} />}
-      <nav className={styles.navbar}>
-        <div className={styles.logo}>Gas Agency</div>
-        <ul className={styles.navLinks}>
-          <li className={styles.navItem} onClick={handleLogout}>Logout</li>
-        </ul>
-      </nav>
+      {showAlert && (
+        <CustomAlert
+          message={alertMessage}
+          onClose={() => setShowAlert(false)}
+        />
+      )}
       <div className={styles.sidebar}>
-        {user.type !== 'admin' && (
+        {user && user.type !== 'admin' && (
           <>
             <button className={styles.sidebarButton} onClick={() => setSelectedOption('personalInfo')}>Personal Information</button>
             {user.connectionType === 'Pipeline' ? (
@@ -474,8 +472,10 @@ export default function Dashboard() {
             )}
           </>
         )}
-        {user.type === 'admin' && (
+        {user && user.type === 'admin' && (
           <>
+            <h3 className={styles.sidebarHeader}>Admin Menu</h3>
+            <button className={styles.sidebarButton} onClick={() => setSelectedOption('overview')}>Dashboard</button>
             <button className={styles.sidebarButton} onClick={() => setSelectedOption('manageUsers')}>Manage Users</button>
             <button className={styles.sidebarButton} onClick={() => setSelectedOption('manageBookings')}>Manage Refills</button>
             <button className={styles.sidebarButton} onClick={() => setSelectedOption('transactions')}>Transactions</button>
@@ -483,434 +483,118 @@ export default function Dashboard() {
             <button className={styles.sidebarButton} onClick={() => setSelectedOption('inventory')}>Inventory & Finance</button>
           </>
         )}
+        <button className={styles.logoutButton} onClick={handleLogout}>Logout</button>
       </div>
+
       <div className={styles.content}>
-        {/* Stats Grid */}
-        <div className={styles.statsGrid}>
-          {stats.map((stat, index) => (
-            <div key={index} className={styles.statCard}>
-              <div className={styles.statIcon}>{stat.icon}</div>
-              <div className={styles.statLabel}>{stat.label}</div>
-              <div className={styles.statValue}>{stat.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {selectedOption === 'personalInfo' && (
-          <>
-            <h2 className={styles.headings}>Welcome, {user.username}</h2>
-            <table className={styles.invisibleTable}>
-              <tbody>
-                <tr>
-                  <td><strong>Username:</strong></td>
-                  <td>{user.username}</td>
-                </tr>
-                <tr>
-                  <td><strong>Email:</strong></td>
-                  <td>{user.email}</td>
-                </tr>
-                <tr>
-                  <td><strong>Address:</strong></td>
-                  <td>
-                    {user.address && typeof user.address === 'object'
-                      ? `${user.address.house}, ${user.address.city} - ${user.address.pincode}`
-                      : user.address}
-                  </td>
-                </tr>
-                <tr>
-                  <td><strong>Connection Type:</strong></td>
-                  <td><span className={styles.badge} style={{ background: '#667eea', color: 'white' }}>{user.connectionType}</span></td>
-                </tr>
-              </tbody>
-            </table>
-            <div className={styles.form}>
-              <h3 className={styles.headings}>Update Your Information</h3>
-              <div className={styles.inputGroup}>
-                <input
-                  type="text"
-                  placeholder="New Username"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  className={styles.input}
-                />
-              </div>
-              <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>House / Flat No.</label>
-                <input
-                  type="text"
-                  placeholder="House No."
-                  value={newAddress.house}
-                  onChange={(e) => setNewAddress({ ...newAddress, house: e.target.value })}
-                  className={styles.input}
-                />
-              </div>
-              <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>City</label>
-                <input
-                  type="text"
-                  placeholder="City"
-                  value={newAddress.city}
-                  onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
-                  className={styles.input}
-                />
-              </div>
-              <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Pin Code</label>
-                <input
-                  type="text"
-                  placeholder="Pin Code"
-                  value={newAddress.pincode}
-                  onChange={(e) => setNewAddress({ ...newAddress, pincode: e.target.value })}
-                  className={styles.input}
-                />
-              </div>
-              <button className={styles.button} onClick={handleUpdateUser}>Update</button>
-            </div>
-          </>
-        )}
-
-        {selectedOption === 'bookings' && (
-          <>
-            <div className={styles.filterContainer}>
-              <h3 className={styles.headings} style={{ marginBottom: 0 }}>Your Refills:</h3>
-              <select
-                className={styles.filterSelect}
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="all">All Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Out for Delivery">Out for Delivery</option>
-                <option value="Delivered">Delivered</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Booked On</th>
-                  <th>Status</th>
-                  <th>Invoice</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getFilteredBookings(user.bookings).map((booking) => (
-                  <tr key={booking._id}>
-                    <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
-                    <td>
-                      <span className={`${styles.badge} ${getStatusBadgeClass(booking.status || (booking.delivered ? 'Delivered' : 'Pending'))}`}>
-                        {booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
-                      </span>
-                    </td>
-                    <td>
-                      <button className={styles.button} style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', marginBottom: 0 }}>
-                        Download
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className={styles.form} style={{ marginTop: '2rem' }}>
-              <h3 className={styles.headings}>Request New Refill</h3>
+        {selectedOption === 'personalInfo' && user.type !== 'admin' && (
+          <div className={styles.form}>
+            <h3 className={styles.headings}>Personal Information</h3>
+            <div className={styles.inputGroup}>
+              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Username</label>
               <input
-                type="date"
-                value={newBookingDate}
-                onChange={(e) => setNewBookingDate(e.target.value)}
+                type="text"
+                placeholder={user.username}
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
                 className={styles.input}
-                style={{ marginBottom: '0.5rem' }}
               />
-              <button className={styles.button} onClick={handleCreateBooking}>Request Refill</button>
             </div>
-          </>
+            <div className={styles.inputGroup}>
+              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Email</label>
+              <input type="email" value={user.email} disabled className={styles.input} style={{ background: '#f5f6fa', cursor: 'not-allowed' }} />
+            </div>
+            <div className={styles.inputGroup}>
+              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Connection Type</label>
+              <input type="text" value={user.connectionType} disabled className={styles.input} style={{ background: '#f5f6fa', cursor: 'not-allowed' }} />
+            </div>
+            <h4 className={styles.subHeadings} style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>Address Details</h4>
+            <div className={styles.inputGroup}>
+              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>House No / Street</label>
+              <input
+                type="text"
+                placeholder={user.address?.house || 'Enter House No'}
+                value={newAddress.house}
+                onChange={(e) => setNewAddress({ ...newAddress, house: e.target.value })}
+                className={styles.input}
+              />
+            </div>
+            <div className={styles.inputGroup}>
+              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>City</label>
+              <input
+                type="text"
+                placeholder={user.address?.city || 'Enter City'}
+                value={newAddress.city}
+                onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
+                className={styles.input}
+              />
+            </div>
+            <div className={styles.inputGroup}>
+              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Pincode</label>
+              <input
+                type="text"
+                placeholder={user.address?.pincode || 'Enter Pincode'}
+                value={newAddress.pincode}
+                onChange={(e) => setNewAddress({ ...newAddress, pincode: e.target.value })}
+                className={styles.input}
+              />
+            </div>
+            <button className={styles.button} onClick={handleUpdateUser}>Update Profile</button>
+          </div>
         )}
 
-        {selectedOption === 'readings' && user.connectionType === 'Pipeline' && (
+        {selectedOption === 'bookings' && user.connectionType === 'Cylinder' && (
           <>
-            <h3 className={styles.headings}>Pipeline Dashboard</h3>
-
-            {pipelineEstimates && (
-              <>
-                <h4 className={styles.subHeadings} style={{ marginTop: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Estimates & Projections</h4>
-                <div className={styles.statsGrid}>
-                  <div className={styles.statCard}>
-                    <div className={styles.statIcon}>⚡</div>
-                    <div className={styles.statLabel}>Avg. Monthly Usage</div>
-                    <div className={styles.statValue}>{pipelineEstimates.avgUsage} Units</div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statIcon}>📅</div>
-                    <div className={styles.statLabel}>Est. Monthly Bill</div>
-                    <div className={styles.statValue}>₹{pipelineEstimates.estimatedBill}</div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statIcon}>🏷️</div>
-                    <div className={styles.statLabel}>Current Unit Rate</div>
-                    <div className={styles.statValue}>₹{pipelineEstimates.unitRate}/unit</div>
-                  </div>
-                </div>
-
-                <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Costs & Billing Summary</h4>
-                <div className={styles.statsGrid}>
-                  <div className={styles.statCard}>
-                    <div className={styles.statIcon}>💰</div>
-                    <div className={styles.statLabel}>Total Paid</div>
-                    <div className={styles.statValue} style={{ color: '#27ae60' }}>₹{pipelineEstimates.totalPaid}</div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statIcon}>⚠️</div>
-                    <div className={styles.statLabel}>Total Unpaid</div>
-                    <div className={styles.statValue} style={{ color: '#e67e22' }}>₹{pipelineEstimates.totalUnpaid}</div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statIcon}>🚫</div>
-                    <div className={styles.statLabel}>Total Penalties</div>
-                    <div className={styles.statValue} style={{ color: '#c0392b' }}>₹{pipelineEstimates.totalPenalty}</div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Metered Usage History</h4>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Reading</th>
-                  <th>Usage</th>
-                  <th>Cost (₹)</th>
-                  <th>Penalty</th>
-                  <th>Total</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {meterReadings.map((reading) => {
-                  const isOverdue = reading.status === 'Unpaid' && new Date() > new Date(reading.dueDate);
-                  const totalAmount = reading.cost + (reading.penalty || 0);
-                  return (
-                    <tr key={reading._id}>
-                      <td>{new Date(reading.readingDate).toLocaleDateString()}</td>
-                      <td>{reading.readingValue}</td>
-                      <td>{reading.usage}</td>
-                      <td>{reading.cost}</td>
-                      <td style={{ color: '#e74c3c' }}>{reading.penalty > 0 ? `+₹${reading.penalty}` : '-'}</td>
-                      <td><strong>₹{totalAmount}</strong></td>
-                      <td style={{ color: isOverdue ? '#e74c3c' : 'inherit', fontWeight: isOverdue ? 'bold' : 'normal' }}>
-                        {reading.dueDate ? new Date(reading.dueDate).toLocaleDateString() : 'N/A'}
-                        {isOverdue && <span style={{ fontSize: '0.7em', marginLeft: '5px' }}>(Overdue)</span>}
-                      </td>
-                      <td>
-                        <span className={`${styles.badge} ${reading.status === 'Paid' ? styles.badgeSuccess : (reading.status === 'Refunded' ? styles.badgeInfo : (isOverdue ? styles.badgeDanger : styles.badgeWarning))}`}>
-                          {reading.status}
-                        </span>
-                      </td>
-                      <td>
-                        {reading.status === 'Unpaid' && (
-                          <button
-                            className={styles.button}
-                            style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', background: '#27ae60' }}
-                            onClick={() => handlePayment(reading._id, totalAmount)}
-                          >
-                            Pay Now
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div className={styles.form} style={{ marginTop: '2rem' }}>
-              <h3 className={styles.headings}>Submit Meter Reading</h3>
+            <div className={styles.form}>
+              <h3 className={styles.headings}>Request Refill</h3>
               <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Reading Date</label>
+                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Select Item</label>
+                <select
+                  value={selectedItem}
+                  onChange={(e) => setSelectedItem(e.target.value)}
+                  className={styles.select}
+                >
+                  <option value="">Select Cylinder Type</option>
+                  {inventory.map((item) => (
+                    <option key={item._id} value={item.item}>
+                      {item.item} (₹{item.sellingPrice})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.inputGroup}>
+                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Booking Date</label>
                 <input
                   type="date"
-                  value={readingDate}
-                  onChange={(e) => setReadingDate(e.target.value)}
+                  value={newBookingDate}
+                  onChange={(e) => setNewBookingDate(e.target.value)}
                   className={styles.input}
                 />
               </div>
-              <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Reading Value</label>
-                <input
-                  type="number"
-                  placeholder="Enter current meter reading"
-                  value={newReadingValue}
-                  onChange={(e) => setNewReadingValue(e.target.value)}
-                  className={styles.input}
-                />
-              </div>
-              <button className={styles.button} onClick={handleSubmitReading}>Submit Reading</button>
+              <button className={styles.button} onClick={handleCreateBooking}>Book Now</button>
             </div>
-          </>
-        )}
 
-        {selectedOption === 'transactions' && (
-          <>
-            <h3 className={styles.headings}>Transaction History</h3>
+            <h3 className={styles.headings} style={{ marginTop: '2rem' }}>Booking History</h3>
             <table className={styles.table}>
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Type</th>
-                  <th>Amount</th>
+                  <th>Item</th>
                   <th>Status</th>
-                  {user.type === 'admin' && <th>User</th>}
-                  {user.type === 'admin' && <th>Action</th>}
+                  <th>Delivery Date</th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((transaction) => (
-                  <tr key={transaction._id}>
-                    <td>{new Date(transaction.date).toLocaleDateString()} {new Date(transaction.date).toLocaleTimeString()}</td>
-                    <td>
-                      <span className={`${styles.badge} ${transaction.type === 'Payment' ? styles.badgeSuccess : (transaction.type === 'Refund' ? styles.badgeInfo : styles.badgeDanger)}`}>
-                        {transaction.type}
-                      </span>
-                    </td>
-                    <td>₹{transaction.amount}</td>
-                    <td>{transaction.status}</td>
-                    {user.type === 'admin' && <td>{transaction.user?.username || 'Unknown'}</td>}
-                    {user.type === 'admin' && (
-                      <td>
-                        {transaction.type === 'Payment' && transaction.status === 'Success' && (
-                          <button
-                            className={styles.button}
-                            style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', background: '#e74c3c' }}
-                            onClick={() => handleRefund(transaction._id)}
-                          >
-                            Refund
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        {selectedOption === 'manageUsers' && user.type === 'admin' && (
-          <>
-            <h3 className={styles.headings}>Manage Users:</h3>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Email</th>
-                  <th>Address (House, City, Pin)</th>
-                  <th>Role</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allUsers.map((u) => (
-                  <tr key={u._id}>
-                    <td>{u.username}</td>
-                    <td>{u.email}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '5px', flexDirection: 'column' }}>
-                        <input
-                          type="text"
-                          placeholder="House"
-                          value={u.address?.house || ''}
-                          onChange={(e) => handleAdminUpdateUser(u._id, 'address', { ...u.address, house: e.target.value })}
-                          className={styles.input}
-                          style={{ padding: '0.2rem', fontSize: '0.8rem' }}
-                        />
-                        <input
-                          type="text"
-                          placeholder="City"
-                          value={u.address?.city || ''}
-                          onChange={(e) => handleAdminUpdateUser(u._id, 'address', { ...u.address, city: e.target.value })}
-                          className={styles.input}
-                          style={{ padding: '0.2rem', fontSize: '0.8rem' }}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Pin"
-                          value={u.address?.pincode || ''}
-                          onChange={(e) => handleAdminUpdateUser(u._id, 'address', { ...u.address, pincode: e.target.value })}
-                          className={styles.input}
-                          style={{ padding: '0.2rem', fontSize: '0.8rem' }}
-                        />
-                      </div>
-                    </td>
-                    <td>{u.type}</td>
-                    <td>
-                      <select
-                        value={u.type}
-                        onChange={(e) => handleRoleChange(u._id, e.target.value)}
-                        className={styles.select}
-                      >
-                        <option value="user">User</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        {selectedOption === 'manageBookings' && user.type === 'admin' && (
-          <>
-            <div className={styles.filterContainer}>
-              <h3 className={styles.headings} style={{ marginBottom: 0 }}>Manage Refills:</h3>
-              <select
-                className={styles.filterSelect}
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="all">All Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Out for Delivery">Out for Delivery</option>
-                <option value="Delivered">Delivered</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Booked On</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getFilteredBookings(allBookings).map((booking) => (
+                {allBookings.map((booking) => (
                   <tr key={booking._id}>
-                    <td>{booking.user.username}</td>
                     <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
+                    <td>{booking.item}</td>
                     <td>
-                      <span className={`${styles.badge} ${getStatusBadgeClass(booking.status || (booking.delivered ? 'Delivered' : 'Pending'))}`}>
-                        {booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
+                      <span className={`${styles.badge} ${getStatusBadgeClass(booking.status)}`}>
+                        {booking.status}
                       </span>
                     </td>
-                    <td>
-                      <select
-                        value={booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
-                        onChange={(e) => handleBookingStatusChange(booking._id, e.target.value)}
-                        className={styles.select}
-                        style={{ padding: '0.2rem', fontSize: '0.9rem' }}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Confirmed">Confirmed</option>
-                        <option value="Out for Delivery">Out for Delivery</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
-                    </td>
+                    <td>{booking.deliveryDate ? new Date(booking.deliveryDate).toLocaleDateString() : 'Pending'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -918,300 +602,577 @@ export default function Dashboard() {
           </>
         )}
 
-        {selectedOption === 'analytics' && user.type === 'admin' && (
-          <>
-            <h3 className={styles.headings}>Analytics by Connection Type</h3>
+        {
+          selectedOption === 'readings' && user.connectionType === 'Pipeline' && (
+            <>
+              <h3 className={styles.headings}>Pipeline Dashboard</h3>
 
-            {/* Pipeline Section */}
-            <div className={styles.statCard} style={{ display: 'block', marginBottom: '2rem' }}>
-              <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#3498db' }}>Pipeline Usage by Area</h4>
+              {pipelineEstimates && (
+                <>
+                  <h4 className={styles.subHeadings} style={{ marginTop: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Estimates & Projections</h4>
+                  <div className={styles.statsGrid}>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>⚡</div>
+                      <div className={styles.statLabel}>Avg. Monthly Usage</div>
+                      <div className={styles.statValue}>{pipelineEstimates.avgUsage} Units</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>📅</div>
+                      <div className={styles.statLabel}>Est. Monthly Bill</div>
+                      <div className={styles.statValue}>₹{pipelineEstimates.estimatedBill}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>🏷️</div>
+                      <div className={styles.statLabel}>Current Unit Rate</div>
+                      <div className={styles.statValue}>₹{pipelineEstimates.unitRate}/unit</div>
+                    </div>
+                  </div>
+
+                  <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Costs & Billing Summary</h4>
+                  <div className={styles.statsGrid}>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>💰</div>
+                      <div className={styles.statLabel}>Total Paid</div>
+                      <div className={styles.statValue} style={{ color: '#27ae60' }}>₹{pipelineEstimates.totalPaid}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>⚠️</div>
+                      <div className={styles.statLabel}>Total Unpaid</div>
+                      <div className={styles.statValue} style={{ color: '#e67e22' }}>₹{pipelineEstimates.totalUnpaid}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>🚫</div>
+                      <div className={styles.statLabel}>Total Penalties</div>
+                      <div className={styles.statValue} style={{ color: '#c0392b' }}>₹{pipelineEstimates.totalPenalty}</div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Metered Usage History</h4>
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Area</th>
-                    <th>Customers</th>
-                    <th>Total Usage</th>
-                    <th>Revenue</th>
+                    <th>Date</th>
+                    <th>Reading</th>
+                    <th>Usage</th>
+                    <th>Cost (₹)</th>
+                    <th>Penalty</th>
+                    <th>Total</th>
+                    <th>Due Date</th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {usageStats.stats && usageStats.stats.pipeline ? (
+                  {meterReadings.map((reading) => {
+                    const isOverdue = reading.status === 'Unpaid' && new Date() > new Date(reading.dueDate);
+                    const totalAmount = reading.cost + (reading.penalty || 0);
+                    return (
+                      <tr key={reading._id}>
+                        <td>{new Date(reading.readingDate).toLocaleDateString()}</td>
+                        <td>{reading.readingValue}</td>
+                        <td>{reading.usage}</td>
+                        <td>{reading.cost}</td>
+                        <td style={{ color: '#e74c3c' }}>{reading.penalty > 0 ? `+₹${reading.penalty}` : '-'}</td>
+                        <td><strong>₹{totalAmount}</strong></td>
+                        <td style={{ color: isOverdue ? '#e74c3c' : 'inherit', fontWeight: isOverdue ? 'bold' : 'normal' }}>
+                          {reading.dueDate ? new Date(reading.dueDate).toLocaleDateString() : 'N/A'}
+                          {isOverdue && <span style={{ fontSize: '0.7em', marginLeft: '5px' }}>(Overdue)</span>}
+                        </td>
+                        <td>
+                          <span className={`${styles.badge} ${reading.status === 'Paid' ? styles.badgeSuccess : (reading.status === 'Refunded' ? styles.badgeInfo : (isOverdue ? styles.badgeDanger : styles.badgeWarning))}`}>
+                            {reading.status}
+                          </span>
+                        </td>
+                        <td>
+                          {reading.status === 'Unpaid' && (
+                            <button
+                              className={styles.button}
+                              style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', background: '#27ae60' }}
+                              onClick={() => handlePayment(reading._id, totalAmount)}
+                            >
+                              Pay Now
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className={styles.form} style={{ marginTop: '2rem' }}>
+                <h3 className={styles.headings}>Submit Meter Reading</h3>
+                <div className={styles.inputGroup}>
+                  <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Reading Date</label>
+                  <input
+                    type="date"
+                    value={readingDate}
+                    onChange={(e) => setReadingDate(e.target.value)}
+                    className={styles.input}
+                  />
+                </div>
+                <div className={styles.inputGroup}>
+                  <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Reading Value</label>
+                  <input
+                    type="number"
+                    placeholder="Enter current meter reading"
+                    value={newReadingValue}
+                    onChange={(e) => setNewReadingValue(e.target.value)}
+                    className={styles.input}
+                  />
+                </div>
+                <button className={styles.button} onClick={handleSubmitReading}>Submit Reading</button>
+              </div>
+            </>
+          )
+        }
+
+        {
+          selectedOption === 'transactions' && (
+            <>
+              <h3 className={styles.headings}>Transaction History</h3>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    {user.type === 'admin' && <th>User</th>}
+                    {user.type === 'admin' && <th>Action</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((transaction) => (
+                    <tr key={transaction._id}>
+                      <td>{new Date(transaction.date).toLocaleDateString()} {new Date(transaction.date).toLocaleTimeString()}</td>
+                      <td>
+                        <span className={`${styles.badge} ${transaction.type === 'Payment' ? styles.badgeSuccess : (transaction.type === 'Refund' ? styles.badgeInfo : styles.badgeDanger)}`}>
+                          {transaction.type}
+                        </span>
+                      </td>
+                      <td>₹{transaction.amount}</td>
+                      <td>{transaction.status}</td>
+                      {user.type === 'admin' && <td>{transaction.user?.username || 'Unknown'}</td>}
+                      {user.type === 'admin' && (
+                        <td>
+                          {transaction.type === 'Payment' && transaction.status === 'Success' && (
+                            <button
+                              className={styles.button}
+                              style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', background: '#e74c3c' }}
+                              onClick={() => handleRefund(transaction._id)}
+                            >
+                              Refund
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )
+        }
+
+        {
+          selectedOption === 'manageUsers' && user.type === 'admin' && (
+            <>
+              <h3 className={styles.headings}>Manage Users:</h3>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Address (House, City, Pin)</th>
+                    <th>Connection Type</th>
+                    <th>Role</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUsers.map((u) => (
+                    <tr key={u._id}>
+                      <td>{u.username}</td>
+                      <td>{u.email}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '5px', flexDirection: 'column' }}>
+                          <input
+                            type="text"
+                            placeholder="House"
+                            value={u.address?.house || ''}
+                            onChange={(e) => handleAdminUpdateUser(u._id, 'address', { ...u.address, house: e.target.value })}
+                            className={styles.input}
+                            style={{ padding: '0.2rem', fontSize: '0.8rem' }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="City"
+                            value={u.address?.city || ''}
+                            onChange={(e) => handleAdminUpdateUser(u._id, 'address', { ...u.address, city: e.target.value })}
+                            className={styles.input}
+                            style={{ padding: '0.2rem', fontSize: '0.8rem' }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Pin"
+                            value={u.address?.pincode || ''}
+                            onChange={(e) => handleAdminUpdateUser(u._id, 'address', { ...u.address, pincode: e.target.value })}
+                            className={styles.input}
+                            style={{ padding: '0.2rem', fontSize: '0.8rem' }}
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        <select
+                          value={u.connectionType || 'Cylinder'}
+                          onChange={(e) => handleAdminUpdateUser(u._id, 'connectionType', e.target.value)}
+                          className={styles.select}
+                        >
+                          <option value="Cylinder">Cylinder</option>
+                          <option value="Pipeline">Pipeline</option>
+                        </select>
+                      </td>
+                      <td>{u.type}</td>
+                      <td>
+                        <select
+                          value={u.type}
+                          onChange={(e) => handleRoleChange(u._id, e.target.value)}
+                          className={styles.select}
+                        >
+                          <option value="user">User</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )
+        }
+
+        {
+          selectedOption === 'manageBookings' && user.type === 'admin' && (
+            <>
+              <div className={styles.filterContainer}>
+                <h3 className={styles.headings} style={{ marginBottom: 0 }}>Manage Refills:</h3>
+                <select
+                  className={styles.filterSelect}
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="all">All Status</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="Out for Delivery">Out for Delivery</option>
+                  <option value="Delivered">Delivered</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Booked On</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getFilteredBookings(allBookings).map((booking) => (
+                    <tr key={booking._id}>
+                      <td>{booking.user.username}</td>
+                      <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
+                      <td>
+                        <span className={`${styles.badge} ${getStatusBadgeClass(booking.status || (booking.delivered ? 'Delivered' : 'Pending'))}`}>
+                          {booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
+                        </span>
+                      </td>
+                      <td>
+                        <select
+                          value={booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
+                          onChange={(e) => handleBookingStatusChange(booking._id, e.target.value)}
+                          className={styles.select}
+                          style={{ padding: '0.2rem', fontSize: '0.9rem' }}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Confirmed">Confirmed</option>
+                          <option value="Out for Delivery">Out for Delivery</option>
+                          <option value="Delivered">Delivered</option>
+                          <option value="Cancelled">Cancelled</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )
+        }
+        {
+          selectedOption === 'analytics' && user.type === 'admin' && (
+            <>
+              <h3 className={styles.headings}>Analytics by Connection Type</h3>
+
+              {/* Pipeline Section */}
+              <div className={styles.statCard} style={{ display: 'block', marginBottom: '2rem' }}>
+                <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#3498db' }}>Pipeline Usage by Area</h4>
+                <div className={styles.chartContainer}>
+                  {usageStats.stats && usageStats.stats.pipeline && Object.keys(usageStats.stats.pipeline).length > 0 ? (
                     Object.entries(usageStats.stats.pipeline).map(([area, stats]) => {
                       const maxUsage = Math.max(...Object.values(usageStats.stats.pipeline).map(s => s.totalUsage), 1);
                       const percentage = (stats.totalUsage / maxUsage) * 100;
                       return (
-                        <tr key={area}>
-                          <td>{area}</td>
-                          <td>{stats.customers}</td>
-                          <td style={{ minWidth: '200px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
-                              <div style={{
-                                width: '100%',
-                                height: '6px',
-                                backgroundColor: '#ecf0f1',
-                                borderRadius: '3px',
-                                overflow: 'hidden'
-                              }}>
-                                <div style={{
-                                  width: `${percentage}%`,
-                                  height: '100%',
-                                  backgroundColor: '#3498db',
-                                  borderRadius: '3px',
-                                  transition: 'width 0.5s ease-in-out'
-                                }}></div>
-                              </div>
+                        <div key={area} className={styles.chartRow}>
+                          <div className={styles.chartLabel}>{area}</div>
+                          <div className={styles.chartBarArea}>
+                            <div
+                              className={styles.chartBar}
+                              style={{ width: `${percentage}%`, backgroundColor: '#3498db' }}
+                            >
+                              {percentage > 20 && <span className={styles.barValue}>{stats.totalUsage} units</span>}
                             </div>
-                          </td>
-                          <td>₹{stats.totalCost.toLocaleString()}</td>
-                        </tr>
+                          </div>
+                          {percentage <= 20 && <span className={styles.barValueOutside}>{stats.totalUsage} units</span>}
+                        </div>
                       );
                     })
                   ) : (
-                    <tr><td colSpan="4">No Pipeline data available</td></tr>
+                    <p>No Pipeline data available</p>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </div>
 
-            {/* Cylinder Section */}
-            <div className={styles.statCard} style={{ display: 'block' }}>
-              <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#e67e22' }}>Cylinder Bookings by Area</h4>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Area</th>
-                    <th>Customers</th>
-                    <th>Total Bookings</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usageStats.stats && usageStats.stats.cylinder ? (
+              {/* Cylinder Section */}
+              <div className={styles.statCard} style={{ display: 'block' }}>
+                <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#e67e22' }}>Cylinder Bookings by Area</h4>
+                <div className={styles.chartContainer}>
+                  {usageStats.stats && usageStats.stats.cylinder && Object.keys(usageStats.stats.cylinder).length > 0 ? (
                     Object.entries(usageStats.stats.cylinder).map(([area, stats]) => {
                       const maxBookings = Math.max(...Object.values(usageStats.stats.cylinder).map(s => s.totalBookings), 1);
                       const percentage = (stats.totalBookings / maxBookings) * 100;
                       return (
-                        <tr key={area}>
-                          <td>{area}</td>
-                          <td>{stats.customers}</td>
-                          <td style={{ minWidth: '200px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalBookings} bookings</span>
-                              <div style={{
-                                width: '100%',
-                                height: '6px',
-                                backgroundColor: '#ecf0f1',
-                                borderRadius: '3px',
-                                overflow: 'hidden'
-                              }}>
-                                <div style={{
-                                  width: `${percentage}%`,
-                                  height: '100%',
-                                  backgroundColor: '#e67e22',
-                                  borderRadius: '3px',
-                                  transition: 'width 0.5s ease-in-out'
-                                }}></div>
-                              </div>
+                        <div key={area} className={styles.chartRow}>
+                          <div className={styles.chartLabel}>{area}</div>
+                          <div className={styles.chartBarArea}>
+                            <div
+                              className={styles.chartBar}
+                              style={{ width: `${percentage}%`, backgroundColor: '#e67e22' }}
+                            >
+                              {percentage > 20 && <span className={styles.barValue}>{stats.totalBookings} bookings</span>}
                             </div>
-                          </td>
-                        </tr>
+                          </div>
+                          {percentage <= 20 && <span className={styles.barValueOutside}>{stats.totalBookings} bookings</span>}
+                        </div>
                       );
                     })
                   ) : (
-                    <tr><td colSpan="3">No Cylinder data available</td></tr>
+                    <p>No Cylinder data available</p>
                   )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                </div>
+              </div>
+            </>
+          )
+        }
 
-        {selectedOption === 'inventory' && user.type === 'admin' && (
-          <>
-            <h3 className={styles.headings}>Inventory Management</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-              {inventory.map((item) => (
-                <div key={item._id} className={styles.statCard} style={{ display: 'block', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <h4 style={{ margin: 0 }}>{item.item}</h4>
-                    <button
-                      className={styles.button}
-                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', margin: 0 }}
-                      onClick={() => startEditing(item)}
-                    >
-                      Edit
-                    </button>
-                  </div>
-
-                  {editingItem === item.item ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                      <label style={{ fontSize: '0.8rem' }}>Stock:</label>
-                      <input
-                        type="number"
-                        value={editForm.quantity}
-                        onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
-                        className={styles.input}
-                        style={{ padding: '0.2rem' }}
-                      />
-                      <label style={{ fontSize: '0.8rem' }}>Cost Price:</label>
-                      <input
-                        type="number"
-                        value={editForm.costPrice}
-                        onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })}
-                        className={styles.input}
-                        style={{ padding: '0.2rem' }}
-                      />
-                      <label style={{ fontSize: '0.8rem' }}>Selling Price:</label>
-                      <input
-                        type="number"
-                        value={editForm.sellingPrice}
-                        onChange={(e) => setEditForm({ ...editForm, sellingPrice: e.target.value })}
-                        className={styles.input}
-                        style={{ padding: '0.2rem' }}
-                      />
-                      <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
-                        <button className={styles.button} onClick={() => handleUpdateInventory(item.item)} style={{ margin: 0, padding: '0.3rem', fontSize: '0.8rem' }}>Save</button>
-                        <button className={styles.button} onClick={() => setEditingItem(null)} style={{ margin: 0, padding: '0.3rem', fontSize: '0.8rem', background: '#95a5a6' }}>Cancel</button>
-                      </div>
+        {
+          selectedOption === 'inventory' && user.type === 'admin' && (
+            <>
+              <h3 className={styles.headings}>Inventory Management</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                {inventory.map((item) => (
+                  <div key={item._id} className={styles.statCard} style={{ display: 'block', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <h4 style={{ margin: 0 }}>{item.item}</h4>
+                      <button
+                        className={styles.button}
+                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', margin: 0 }}
+                        onClick={() => startEditing(item)}
+                      >
+                        Edit
+                      </button>
                     </div>
-                  ) : (
-                    <>
-                      <p><strong>Stock:</strong> {item.quantity}</p>
-                      <p><strong>Cost Price:</strong> ₹{item.costPrice}</p>
-                      <p><strong>Selling Price:</strong> ₹{item.sellingPrice}</p>
-                      <p style={{ fontSize: '0.8rem', color: '#7f8c8d' }}>Last Updated: {new Date(item.lastUpdated).toLocaleDateString()}</p>
-                    </>
-                  )}
-                </div>
-              ))}
-              {inventory.length === 0 && <p>No inventory items found. Please initialize via API or DB.</p>}
-            </div>
 
-            <h3 className={styles.headings}>Financial Overview</h3>
-            {financials && (
-              <div className={styles.statsGrid}>
-                <div className={styles.statCard}>
-                  <div className={styles.statIcon}>💰</div>
-                  <div className={styles.statLabel}>Total Revenue</div>
-                  <div className={styles.statValue}>₹{financials.totalRevenue.toLocaleString()}</div>
-                </div>
-                <div className={styles.statCard}>
-                  <div className={styles.statIcon}>📉</div>
-                  <div className={styles.statLabel}>Total Cost</div>
-                  <div className={styles.statValue}>₹{financials.totalCost.toLocaleString()}</div>
-                </div>
-                <div className={styles.statCard}>
-                  <div className={styles.statIcon}>📈</div>
-                  <div className={styles.statLabel}>Net Profit</div>
-                  <div className={styles.statValue} style={{ color: financials.netProfit >= 0 ? '#2ecc71' : '#e74c3c' }}>
-                    ₹{financials.netProfit.toLocaleString()}
+                    {editingItem === item.item ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        <label style={{ fontSize: '0.8rem' }}>Stock:</label>
+                        <input
+                          type="number"
+                          value={editForm.quantity}
+                          onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                          className={styles.input}
+                          style={{ padding: '0.2rem' }}
+                        />
+                        <label style={{ fontSize: '0.8rem' }}>Cost Price:</label>
+                        <input
+                          type="number"
+                          value={editForm.costPrice}
+                          onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })}
+                          className={styles.input}
+                          style={{ padding: '0.2rem' }}
+                        />
+                        <label style={{ fontSize: '0.8rem' }}>Selling Price:</label>
+                        <input
+                          type="number"
+                          value={editForm.sellingPrice}
+                          onChange={(e) => setEditForm({ ...editForm, sellingPrice: e.target.value })}
+                          className={styles.input}
+                          style={{ padding: '0.2rem' }}
+                        />
+                        <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
+                          <button className={styles.button} onClick={() => handleUpdateInventory(item.item)} style={{ margin: 0, padding: '0.3rem', fontSize: '0.8rem' }}>Save</button>
+                          <button className={styles.button} onClick={() => setEditingItem(null)} style={{ margin: 0, padding: '0.3rem', fontSize: '0.8rem', background: '#95a5a6' }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p><strong>Stock:</strong> {item.quantity}</p>
+                        <p><strong>Cost Price:</strong> ₹{item.costPrice}</p>
+                        <p><strong>Selling Price:</strong> ₹{item.sellingPrice}</p>
+                        <p style={{ fontSize: '0.8rem', color: '#7f8c8d' }}>Last Updated: {new Date(item.lastUpdated).toLocaleDateString()}</p>
+                      </>
+                    )}
                   </div>
-                </div>
-                <div className={styles.statCard}>
-                  <div className={styles.statIcon}>⚠️</div>
-                  <div className={styles.statLabel}>Pending Dues</div>
-                  <div className={styles.statValue}>₹{financials.totalDues.toLocaleString()}</div>
-                </div>
+                ))}
+                {inventory.length === 0 && <p>No inventory items found. Please initialize via API or DB.</p>}
               </div>
-            )}
+            </>
+          )
+        }
 
-            <h3 className={styles.headings} style={{ marginTop: '2rem' }}>Usage by Area</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-              <div className={styles.statCard} style={{ display: 'block' }}>
-                <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>By City</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>City</th>
-                      <th>Users</th>
-                      <th>Total Usage</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(usageStats.cityStats || {}).map(([city, stats]) => {
-                      const maxUsage = Math.max(...Object.values(usageStats.cityStats || {}).map(s => s.totalUsage), 1);
-                      const percentage = (stats.totalUsage / maxUsage) * 100;
-                      return (
-                        <tr key={city}>
-                          <td>{city}</td>
-                          <td>{stats.count}</td>
-                          <td style={{ minWidth: '200px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
-                              <div style={{
-                                width: '100%',
-                                height: '6px',
-                                backgroundColor: '#ecf0f1',
-                                borderRadius: '3px',
-                                overflow: 'hidden'
-                              }}>
+        {
+          selectedOption === 'overview' && user.type === 'admin' && (
+            <>
+              <h3 className={styles.headings}>Financial Overview</h3>
+              {
+                financials && (
+                  <div className={styles.statsGrid}>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>💰</div>
+                      <div className={styles.statLabel}>Total Revenue</div>
+                      <div className={styles.statValue}>₹{financials.totalRevenue.toLocaleString()}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>📉</div>
+                      <div className={styles.statLabel}>Total Cost</div>
+                      <div className={styles.statValue}>₹{financials.totalCost.toLocaleString()}</div>
+                    </div>
+
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>⚠️</div>
+                      <div className={styles.statLabel}>Pending Dues</div>
+                      <div className={styles.statValue}>₹{financials.totalDues.toLocaleString()}</div>
+                    </div>
+                    <div className={styles.statCard}>
+                      <div className={styles.statIcon}>💸</div>
+                      <div className={styles.statLabel}>Total Refunds</div>
+                      <div className={styles.statValue}>₹{financials.breakdown.refunds.toLocaleString()}</div>
+                    </div>
+                  </div>
+                )
+              }
+
+              <h3 className={styles.headings} style={{ marginTop: '2rem' }}>Usage by Area</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
+                <div className={styles.statCard} style={{ display: 'block' }}>
+                  <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>By City</h4>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>City</th>
+                        <th>Users</th>
+                        <th>Total Usage</th>
+                        <th>Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(usageStats.cityStats || {}).map(([city, stats]) => {
+                        const maxUsage = Math.max(...Object.values(usageStats.cityStats || {}).map(s => s.totalUsage), 1);
+                        const percentage = (stats.totalUsage / maxUsage) * 100;
+                        return (
+                          <tr key={city}>
+                            <td>{city}</td>
+                            <td>{stats.count}</td>
+                            <td style={{ minWidth: '200px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
                                 <div style={{
-                                  width: `${percentage}%`,
-                                  height: '100%',
-                                  backgroundColor: '#3498db',
+                                  width: '100%',
+                                  height: '6px',
+                                  backgroundColor: '#ecf0f1',
                                   borderRadius: '3px',
-                                  transition: 'width 0.5s ease-in-out'
-                                }}></div>
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    width: `${percentage}%`,
+                                    height: '100%',
+                                    backgroundColor: '#3498db',
+                                    borderRadius: '3px',
+                                    transition: 'width 0.5s ease-in-out'
+                                  }}></div>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td>₹{stats.totalCost.toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className={styles.statCard} style={{ display: 'block' }}>
-                <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>By Pin Code</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Pin Code</th>
-                      <th>Users</th>
-                      <th>Total Usage</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(usageStats.pincodeStats || {}).map(([pincode, stats]) => {
-                      const maxUsage = Math.max(...Object.values(usageStats.pincodeStats || {}).map(s => s.totalUsage), 1);
-                      const percentage = (stats.totalUsage / maxUsage) * 100;
-                      return (
-                        <tr key={pincode}>
-                          <td>{pincode}</td>
-                          <td>{stats.count}</td>
-                          <td style={{ minWidth: '200px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
-                              <div style={{
-                                width: '100%',
-                                height: '6px',
-                                backgroundColor: '#ecf0f1',
-                                borderRadius: '3px',
-                                overflow: 'hidden'
-                              }}>
+                            </td>
+                            <td>₹{stats.totalCost.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className={styles.statCard} style={{ display: 'block' }}>
+                  <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>By Pin Code</h4>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Pin Code</th>
+                        <th>Users</th>
+                        <th>Total Usage</th>
+                        <th>Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(usageStats.pincodeStats || {}).map(([pincode, stats]) => {
+                        const maxUsage = Math.max(...Object.values(usageStats.pincodeStats || {}).map(s => s.totalUsage), 1);
+                        const percentage = (stats.totalUsage / maxUsage) * 100;
+                        return (
+                          <tr key={pincode}>
+                            <td>{pincode}</td>
+                            <td>{stats.count}</td>
+                            <td style={{ minWidth: '200px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
                                 <div style={{
-                                  width: `${percentage}%`,
-                                  height: '100%',
-                                  backgroundColor: '#2ecc71',
+                                  width: '100%',
+                                  height: '6px',
+                                  backgroundColor: '#ecf0f1',
                                   borderRadius: '3px',
-                                  transition: 'width 0.5s ease-in-out'
-                                }}></div>
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    width: `${percentage}%`,
+                                    height: '100%',
+                                    backgroundColor: '#2ecc71',
+                                    borderRadius: '3px',
+                                    transition: 'width 0.5s ease-in-out'
+                                  }}></div>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td>₹{stats.totalCost.toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                            <td>₹{stats.totalCost.toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )
+        }
       </div>
     </div>
   );

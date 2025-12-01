@@ -22,7 +22,7 @@ export async function PUT(req, { params }) {
             return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         }
 
-        const { id } = params;
+        const { id } = await params;
         const { status } = await req.json();
 
         const validStatuses = ['Pending', 'Confirmed', 'Out for Delivery', 'Delivered', 'Cancelled'];

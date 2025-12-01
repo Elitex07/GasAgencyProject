@@ -1,5 +1,5 @@
 import React from 'react';
-import styles from './CustomAlert.module.css';
+import styles from '../styles/CustomAlert.module.css';
 
 const CustomAlert = ({ message, onClose }) => {
   return (

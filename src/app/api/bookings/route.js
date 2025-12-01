@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongo';
 import { Booking } from '@/models/booking';
 import { User } from '@/models/user';
+import Inventory from '@/models/inventory';
 import jwt from 'jsonwebtoken';
 
 // Helper to verify token
@@ -50,12 +51,30 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         }
 
-        const { bookedOn } = await req.json();
+        const { bookedOn, item } = await req.json();
+
+        if (!item) {
+            return NextResponse.json({ message: 'Item is required' }, { status: 400 });
+        }
+
+        // Check and deduct inventory
+        const inventoryItem = await Inventory.findOne({ item });
+        if (!inventoryItem) {
+            return NextResponse.json({ message: 'Item not found' }, { status: 404 });
+        }
+
+        if (inventoryItem.quantity <= 0) {
+            return NextResponse.json({ message: 'Out of stock' }, { status: 400 });
+        }
+
+        inventoryItem.quantity -= 1;
+        await inventoryItem.save();
 
         // Create new booking with default status 'Pending'
         const newBooking = new Booking({
             user: decoded.userId,
             bookedOn: new Date(bookedOn),
+            item: item,
             status: 'Pending'
         });
 

@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongo';
-import Inventory from '@/models/inventory';
+import {Inventory} from '@/models/inventory';
 import { verifyToken } from '@/lib/auth';
 
 export async function GET(req) {
     await connectToDatabase();
     const user = verifyToken(req);
 
-    if (!user || user.type !== 'admin') {
+    if (!user) {
         return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
@@ -15,6 +15,7 @@ export async function GET(req) {
         const inventory = await Inventory.find({});
         return NextResponse.json({ inventory }, { status: 200 });
     } catch (error) {
+        console.log(error);
         return NextResponse.json({ message: 'Error fetching inventory', error: error.message }, { status: 500 });
     }
 }
@@ -44,6 +45,7 @@ export async function POST(req) {
 
         return NextResponse.json({ message: 'Inventory updated', inventoryItem }, { status: 200 });
     } catch (error) {
+        console.log(error);
         return NextResponse.json({ message: 'Error updating inventory', error: error.message }, { status: 500 });
     }
 }
