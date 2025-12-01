@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import styles from './page.module.css';
 import { useRouter } from 'next/navigation';
 import CustomAlert from '../CustomAlert';
@@ -416,17 +416,40 @@ export default function Dashboard() {
     return bookings.filter(b => (b.status || (b.delivered ? 'Delivered' : 'Pending')) === filterStatus);
   };
 
+  const pipelineEstimates = useMemo(() => {
+    if (!user || user.connectionType !== 'Pipeline' || !meterReadings.length) return null;
+
+    const totalUsage = meterReadings.reduce((acc, r) => acc + r.usage, 0);
+    const avgUsage = (totalUsage / meterReadings.length).toFixed(2);
+    const unitRate = user.pipelineDetails?.unitRate || 45;
+    const estimatedBill = (avgUsage * unitRate).toFixed(2);
+
+    // Calculate totals
+    const totalPaid = meterReadings.filter(r => r.status === 'Paid').reduce((acc, r) => acc + r.cost + (r.penalty || 0), 0);
+    const totalUnpaid = meterReadings.filter(r => r.status === 'Unpaid').reduce((acc, r) => acc + r.cost + (r.penalty || 0), 0);
+    const totalPenalty = meterReadings.reduce((acc, r) => acc + (r.penalty || 0), 0);
+
+    return {
+      avgUsage,
+      estimatedBill,
+      unitRate,
+      totalPaid,
+      totalUnpaid,
+      totalPenalty
+    };
+  }, [meterReadings, user]);
+
   const getStatusBadgeClass = (status) => {
     switch (status) {
       case 'Delivered': return styles.badgeSuccess;
       case 'Cancelled': return styles.badgeDanger;
-      case 'Pending': return styles.badgeWarning;
-      default: return styles.badgeInfo; // Confirmed, Out for Delivery
+      default: return styles.badgeWarning;
     }
   };
 
-  if (!user) return <h1>Loading...</h1>;
   const stats = getStats();
+
+  if (!user) return <div className={styles.loading}>Loading...</div>;
 
   return (
     <div className={styles.container}>
@@ -545,6 +568,7 @@ export default function Dashboard() {
             </div>
           </>
         )}
+
         {selectedOption === 'bookings' && (
           <>
             <div className={styles.filterContainer}>
@@ -604,7 +628,51 @@ export default function Dashboard() {
 
         {selectedOption === 'readings' && user.connectionType === 'Pipeline' && (
           <>
-            <h3 className={styles.headings}>Meter Readings & Usage</h3>
+            <h3 className={styles.headings}>Pipeline Dashboard</h3>
+
+            {pipelineEstimates && (
+              <>
+                <h4 className={styles.subHeadings} style={{ marginTop: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Estimates & Projections</h4>
+                <div className={styles.statsGrid}>
+                  <div className={styles.statCard}>
+                    <div className={styles.statIcon}>⚡</div>
+                    <div className={styles.statLabel}>Avg. Monthly Usage</div>
+                    <div className={styles.statValue}>{pipelineEstimates.avgUsage} Units</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <div className={styles.statIcon}>📅</div>
+                    <div className={styles.statLabel}>Est. Monthly Bill</div>
+                    <div className={styles.statValue}>₹{pipelineEstimates.estimatedBill}</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <div className={styles.statIcon}>🏷️</div>
+                    <div className={styles.statLabel}>Current Unit Rate</div>
+                    <div className={styles.statValue}>₹{pipelineEstimates.unitRate}/unit</div>
+                  </div>
+                </div>
+
+                <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Costs & Billing Summary</h4>
+                <div className={styles.statsGrid}>
+                  <div className={styles.statCard}>
+                    <div className={styles.statIcon}>💰</div>
+                    <div className={styles.statLabel}>Total Paid</div>
+                    <div className={styles.statValue} style={{ color: '#27ae60' }}>₹{pipelineEstimates.totalPaid}</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <div className={styles.statIcon}>⚠️</div>
+                    <div className={styles.statLabel}>Total Unpaid</div>
+                    <div className={styles.statValue} style={{ color: '#e67e22' }}>₹{pipelineEstimates.totalUnpaid}</div>
+                  </div>
+                  <div className={styles.statCard}>
+                    <div className={styles.statIcon}>🚫</div>
+                    <div className={styles.statLabel}>Total Penalties</div>
+                    <div className={styles.statValue} style={{ color: '#c0392b' }}>₹{pipelineEstimates.totalPenalty}</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Metered Usage History</h4>
             <table className={styles.table}>
               <thead>
                 <tr>
@@ -729,62 +797,6 @@ export default function Dashboard() {
           </>
         )}
 
-        {selectedOption === 'manageBookings' && (
-          <>
-            <div className={styles.filterContainer}>
-              <h3 className={styles.headings} style={{ marginBottom: 0 }}>Manage Refills:</h3>
-              <select
-                className={styles.filterSelect}
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="all">All Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Out for Delivery">Out for Delivery</option>
-                <option value="Delivered">Delivered</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Booked On</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getFilteredBookings(allBookings).map((booking) => (
-                  <tr key={booking._id}>
-                    <td>{booking.user.username}</td>
-                    <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
-                    <td>
-                      <span className={`${styles.badge} ${getStatusBadgeClass(booking.status || (booking.delivered ? 'Delivered' : 'Pending'))}`}>
-                        {booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
-                      </span>
-                    </td>
-                    <td>
-                      <select
-                        value={booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
-                        onChange={(e) => handleBookingStatusChange(booking._id, e.target.value)}
-                        className={styles.select}
-                        style={{ padding: '0.2rem', fontSize: '0.9rem' }}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Confirmed">Confirmed</option>
-                        <option value="Out for Delivery">Out for Delivery</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
         {selectedOption === 'manageUsers' && user.type === 'admin' && (
           <>
             <h3 className={styles.headings}>Manage Users:</h3>
@@ -849,29 +861,88 @@ export default function Dashboard() {
           </>
         )}
 
+        {selectedOption === 'manageBookings' && user.type === 'admin' && (
+          <>
+            <div className={styles.filterContainer}>
+              <h3 className={styles.headings} style={{ marginBottom: 0 }}>Manage Refills:</h3>
+              <select
+                className={styles.filterSelect}
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="all">All Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Confirmed">Confirmed</option>
+                <option value="Out for Delivery">Out for Delivery</option>
+                <option value="Delivered">Delivered</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Booked On</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getFilteredBookings(allBookings).map((booking) => (
+                  <tr key={booking._id}>
+                    <td>{booking.user.username}</td>
+                    <td>{new Date(booking.bookedOn).toLocaleDateString()}</td>
+                    <td>
+                      <span className={`${styles.badge} ${getStatusBadgeClass(booking.status || (booking.delivered ? 'Delivered' : 'Pending'))}`}>
+                        {booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        value={booking.status || (booking.delivered ? 'Delivered' : 'Pending')}
+                        onChange={(e) => handleBookingStatusChange(booking._id, e.target.value)}
+                        className={styles.select}
+                        style={{ padding: '0.2rem', fontSize: '0.9rem' }}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Confirmed">Confirmed</option>
+                        <option value="Out for Delivery">Out for Delivery</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
         {selectedOption === 'analytics' && user.type === 'admin' && (
           <>
-            <h3 className={styles.headings}>Usage Estimation by Area</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-              <div className={styles.statCard} style={{ display: 'block' }}>
-                <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>By City</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>City</th>
-                      <th>Users</th>
-                      <th>Total Usage</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(usageStats.cityStats || {}).map(([city, stats]) => {
-                      const maxUsage = Math.max(...Object.values(usageStats.cityStats || {}).map(s => s.totalUsage), 1);
+            <h3 className={styles.headings}>Analytics by Connection Type</h3>
+
+            {/* Pipeline Section */}
+            <div className={styles.statCard} style={{ display: 'block', marginBottom: '2rem' }}>
+              <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#3498db' }}>Pipeline Usage by Area</h4>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Area</th>
+                    <th>Customers</th>
+                    <th>Total Usage</th>
+                    <th>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageStats.stats && usageStats.stats.pipeline ? (
+                    Object.entries(usageStats.stats.pipeline).map(([area, stats]) => {
+                      const maxUsage = Math.max(...Object.values(usageStats.stats.pipeline).map(s => s.totalUsage), 1);
                       const percentage = (stats.totalUsage / maxUsage) * 100;
                       return (
-                        <tr key={city}>
-                          <td>{city}</td>
-                          <td>{stats.count}</td>
+                        <tr key={area}>
+                          <td>{area}</td>
+                          <td>{stats.customers}</td>
                           <td style={{ minWidth: '200px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
@@ -895,32 +966,37 @@ export default function Dashboard() {
                           <td>₹{stats.totalCost.toLocaleString()}</td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className={styles.statCard} style={{ display: 'block' }}>
-                <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>By Pin Code</h4>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Pin Code</th>
-                      <th>Users</th>
-                      <th>Total Usage</th>
-                      <th>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(usageStats.pincodeStats || {}).map(([pincode, stats]) => {
-                      const maxUsage = Math.max(...Object.values(usageStats.pincodeStats || {}).map(s => s.totalUsage), 1);
-                      const percentage = (stats.totalUsage / maxUsage) * 100;
+                    })
+                  ) : (
+                    <tr><td colSpan="4">No Pipeline data available</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Cylinder Section */}
+            <div className={styles.statCard} style={{ display: 'block' }}>
+              <h4 className={styles.headings} style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#e67e22' }}>Cylinder Bookings by Area</h4>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Area</th>
+                    <th>Customers</th>
+                    <th>Total Bookings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageStats.stats && usageStats.stats.cylinder ? (
+                    Object.entries(usageStats.stats.cylinder).map(([area, stats]) => {
+                      const maxBookings = Math.max(...Object.values(usageStats.stats.cylinder).map(s => s.totalBookings), 1);
+                      const percentage = (stats.totalBookings / maxBookings) * 100;
                       return (
-                        <tr key={pincode}>
-                          <td>{pincode}</td>
-                          <td>{stats.count}</td>
+                        <tr key={area}>
+                          <td>{area}</td>
+                          <td>{stats.customers}</td>
                           <td style={{ minWidth: '200px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalUsage} units</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{stats.totalBookings} bookings</span>
                               <div style={{
                                 width: '100%',
                                 height: '6px',
@@ -931,20 +1007,21 @@ export default function Dashboard() {
                                 <div style={{
                                   width: `${percentage}%`,
                                   height: '100%',
-                                  backgroundColor: '#2ecc71',
+                                  backgroundColor: '#e67e22',
                                   borderRadius: '3px',
                                   transition: 'width 0.5s ease-in-out'
                                 }}></div>
                               </div>
                             </div>
                           </td>
-                          <td>₹{stats.totalCost.toLocaleString()}</td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    })
+                  ) : (
+                    <tr><td colSpan="3">No Cylinder data available</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </>
         )}

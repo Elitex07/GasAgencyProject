@@ -1,0 +1,11 @@
+{
+    "username": "testuser_reg_2",
+    "email": "test_reg_2@example.com",
+    "password": "password123",
+    "address": {
+        "house": "456",
+        "city": "Test City",
+        "pincode": "654321"
+    },
+    "connectionType": "Pipeline"
+}

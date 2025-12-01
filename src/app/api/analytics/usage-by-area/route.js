@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongo';
 import { MeterReading } from '@/models/meterReading';
+import { Booking } from '@/models/booking';
 import { User } from '@/models/user';
 import jwt from 'jsonwebtoken';
 
@@ -28,37 +29,67 @@ export async function GET(req) {
             return NextResponse.json({ message: 'Unauthorized: Admin only' }, { status: 403 });
         }
 
-        // Fetch all readings and populate user address
-        const readings = await MeterReading.find().populate('user', 'address');
+        // Initialize response structure
+        const stats = {
+            pipeline: {},
+            cylinder: {}
+        };
 
-        const cityStats = {};
-        const pincodeStats = {};
+        // 1. Process Pipeline Data (from MeterReadings)
+        // We need to fetch users with connectionType 'Pipeline' to group them correctly, 
+        // but MeterReadings are the source of usage.
+        // Actually, let's iterate over MeterReadings and group by the user's area.
+        const readings = await MeterReading.find().populate('user', 'address connectionType');
 
         readings.forEach(reading => {
             if (!reading.user || !reading.user.address) return;
 
-            const city = reading.user.address.city || 'Unknown';
-            const pincode = reading.user.address.pincode || 'Unknown';
+            // Only count if user is currently Pipeline (or if we assume all meter readings are pipeline)
+            // It's safer to check connectionType if possible, but historical data might be tricky.
+            // For now, we assume MeterReading implies Pipeline usage.
 
-            // Aggregate by City
-            if (!cityStats[city]) {
-                cityStats[city] = { totalUsage: 0, totalCost: 0, count: 0 };
-            }
-            cityStats[city].totalUsage += reading.usage;
-            cityStats[city].totalCost += reading.cost;
-            cityStats[city].count += 1;
+            const area = reading.user.address.area || 'Unknown';
 
-            // Aggregate by Pincode
-            if (!pincodeStats[pincode]) {
-                pincodeStats[pincode] = { totalUsage: 0, totalCost: 0, count: 0 };
+            if (!stats.pipeline[area]) {
+                stats.pipeline[area] = { totalUsage: 0, totalCost: 0, customerCount: new Set() };
             }
-            pincodeStats[pincode].totalUsage += reading.usage;
-            pincodeStats[pincode].totalCost += reading.cost;
-            pincodeStats[pincode].count += 1;
+
+            stats.pipeline[area].totalUsage += reading.usage;
+            stats.pipeline[area].totalCost += reading.cost;
+            stats.pipeline[area].customerCount.add(reading.user._id.toString());
         });
 
-        return NextResponse.json({ cityStats, pincodeStats }, { status: 200 });
+        // Convert Set to count
+        for (const area in stats.pipeline) {
+            stats.pipeline[area].customers = stats.pipeline[area].customerCount.size;
+            delete stats.pipeline[area].customerCount;
+        }
+
+        // 2. Process Cylinder Data (from Bookings)
+        const bookings = await Booking.find({ status: 'Delivered' }).populate('user', 'address connectionType');
+
+        bookings.forEach(booking => {
+            if (!booking.user || !booking.user.address) return;
+
+            const area = booking.user.address.area || 'Unknown';
+
+            if (!stats.cylinder[area]) {
+                stats.cylinder[area] = { totalBookings: 0, customerCount: new Set() };
+            }
+
+            stats.cylinder[area].totalBookings += 1;
+            stats.cylinder[area].customerCount.add(booking.user._id.toString());
+        });
+
+        // Convert Set to count
+        for (const area in stats.cylinder) {
+            stats.cylinder[area].customers = stats.cylinder[area].customerCount.size;
+            delete stats.cylinder[area].customerCount;
+        }
+
+        return NextResponse.json({ stats }, { status: 200 });
     } catch (error) {
+        console.error("Analytics Error:", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }

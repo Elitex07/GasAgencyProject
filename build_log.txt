@@ -1,0 +1,162 @@
+﻿
+> gas-agency@0.1.0 build
+> next build
+
+   Γû▓ Next.js 15.0.4
+   - Environments: .env.local, .env
+
+   Creating an optimized production build ...
+node.exe :  ΓÜá 
+Attempted to load @ne
+xt/swc-win32-x64-msvc
+, but an error 
+occurred: \\?\C:\User
+s\Dell\GasAgency\GasA
+gencyProject\node_mod
+ules\@next\swc-win32-
+x64-msvc\next-swc.win
+32-x64-msvc.node is 
+not a valid Win32 
+application.
+At line:1 char:1
++ & "C:\Program Files
+\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo 
+...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: ( ΓÜá At   
+ tempted ...32 ap    
+plication.:Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+\\?\C:\Users\Dell\Gas
+Agency\GasAgencyProje
+ct\node_modules\@next
+\swc-win32-x64-msvc\n
+ext-swc.win32-x64-msv
+c.node
+Failed to compile.
+
+./src/app/dashboard/p
+age.js
+NonErrorEmittedError:
+ (Emitted value 
+instead of an 
+instance of Error)   
+x Unexpected token. 
+Did you mean `{'}'}` 
+or `&rbrace;`?
+     ,-[C:\Users\Dell
+\GasAgency\GasAgencyP
+roject\src\app\dashbo
+ard\page.js:466:1]
+ 463 |               
+      ```javascript
+ 464 |               
+      
+'Content-Type': 
+'application/json',
+ 465 |               
+      Authorization: 
+`Bearer ${token}`,
+ 466 |       },
+     :       ^
+ 467 |               
+      body: JSON.stri
+ngify({username: 
+newUsername, 
+address: newAddress 
+}),
+ 468 |     });
+ 468 | 
+     `----
+  x Expected '}', 
+got ':'
+     ,-[C:\Users\Dell
+\GasAgency\GasAgencyP
+roject\src\app\dashbo
+ard\page.js:467:1]
+ 464 |               
+      
+'Content-Type': 
+'application/json',
+ 465 |               
+      Authorization: 
+`Bearer ${token}`,
+ 466 |       },
+ 467 |               
+      body: JSON.stri
+ngify({username: 
+newUsername, 
+address: newAddress 
+}),
+     :               
+                     
+               ^
+ 468 |     });
+ 469 | 
+ 469 |               
+      if (res.ok) {
+     `----
+
+Caused by:
+    0: failed to 
+process js file
+    1: Syntax Error
+    at processResult 
+(C:\Users\Dell\GasAge
+ncy\GasAgencyProject\
+node_modules\next\dis
+t\compiled\webpack\bu
+ndle5.js:28:405584)
+    at C:\Users\Dell\
+GasAgency\GasAgencyPr
+oject\node_modules\ne
+xt\dist\compiled\webp
+ack\bundle5.js:28:407
+441
+    at C:\Users\Dell\
+GasAgency\GasAgencyPr
+oject\node_modules\ne
+xt\dist\compiled\load
+er-runner\LoaderRunne
+r.js:1:8645
+    at C:\Users\Dell\
+GasAgency\GasAgencyPr
+oject\node_modules\ne
+xt\dist\compiled\load
+er-runner\LoaderRunne
+r.js:1:5828
+    at r.callback (C:
+\Users\Dell\GasAgency
+\GasAgencyProject\nod
+e_modules\next\dist\c
+ompiled\loader-runner
+\LoaderRunner.js:1:40
+39)
+    at C:\Users\Dell\
+GasAgency\GasAgencyPr
+oject\node_modules\ne
+xt\dist\build\webpack
+\loaders\next-swc-loa
+der.js:213:9
+
+Import trace for 
+requested module:
+./src/app/dashboard/p
+age.js
+
+
+> Build failed 
+because of webpack 
+errors
