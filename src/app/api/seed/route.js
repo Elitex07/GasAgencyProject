@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongo';
 import { User } from '@/models/user';
 import { Booking } from '@/models/booking';
-import Inventory from '@/models/inventory';
+import { Inventory } from '@/models/inventory';
 import { MeterReading } from '@/models/meterReading';
 import { Transaction } from '@/models/transaction';
 import bcrypt from 'bcryptjs';
