@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongo';
 import { Booking } from '@/models/booking';
 import { User } from '@/models/user';
-import Inventory from '@/models/inventory';
+import { Inventory } from '@/models/inventory';
 import jwt from 'jsonwebtoken';
 
 // Helper to verify token
@@ -52,6 +52,17 @@ export async function POST(req) {
         }
 
         const { bookedOn, item } = await req.json();
+
+
+
+        // Date Validation: Ensure booking is not in the past
+        const bookingDate = new Date(bookedOn);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+
+        if (bookingDate < today) {
+            return NextResponse.json({ message: 'Bookings cannot be made for past dates.' }, { status: 400 });
+        }
 
         if (!item) {
             return NextResponse.json({ message: 'Item is required' }, { status: 400 });

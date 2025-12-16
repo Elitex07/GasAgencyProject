@@ -2,6 +2,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import styles from '../../styles/dashboard.module.css';
 import { useRouter } from 'next/navigation';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 import CustomAlert from '../CustomAlert';
 
 export default function Dashboard() {
@@ -9,7 +19,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [allBookings, setAllBookings] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [newBookingDate, setNewBookingDate] = useState('');
+  const [newBookingDate, setNewBookingDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
   const [newUsername, setNewUsername] = useState('');
   const [newAddress, setNewAddress] = useState({ house: '', city: '', pincode: '' });
   const [selectedItem, setSelectedItem] = useState('');
@@ -21,8 +31,7 @@ export default function Dashboard() {
 
   // Pipeline State
   const [meterReadings, setMeterReadings] = useState([]);
-  const [newReadingValue, setNewReadingValue] = useState('');
-  const [readingDate, setReadingDate] = useState('');
+  // Removed manual reading inputs (randomizer implemented)
 
   // Payment State
   const [transactions, setTransactions] = useState([]);
@@ -63,6 +72,7 @@ export default function Dashboard() {
       setInventory(inventoryData.inventory || []);
 
       if (data.user.type === 'admin') {
+        setSelectedOption('overview'); // Default to overview for admin
         const usersRes = await fetch('/api/users', {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -86,6 +96,12 @@ export default function Dashboard() {
         });
         const financialsData = await financialsRes.json();
         setFinancials(financialsData.financials);
+
+        const allReadingsRes = await fetch('/api/meter-readings', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const allReadingsData = await allReadingsRes.json();
+        setMeterReadings(allReadingsData.readings || []);
 
       } else if (data.user.connectionType === 'Pipeline') {
         const readingsRes = await fetch('/api/meter-readings', {
@@ -143,6 +159,27 @@ export default function Dashboard() {
   };
 
   const handleSubmitReading = async () => {
+    // Randomizer Logic
+    const lastReading = meterReadings.length > 0 ? meterReadings[0] : null;
+    const lastReadingValue = lastReading ? lastReading.readingValue : 0;
+    const lastDate = lastReading ? new Date(lastReading.readingDate) : new Date(new Date().setDate(new Date().getDate() - 30));
+
+    // Calculate days difference
+    const today = new Date();
+    const diffTime = Math.abs(today - lastDate);
+    // Ensure at least 1 day difference to prevent zero or negative increment if spamming
+    // For demo purposes, we allow immediate multiple readings but with small random increment
+    const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+    // Generate random usage: 0.5 to 2.5 units per day
+    const dailyUsage = Math.random() * (2.5 - 0.5) + 0.5;
+    const estimatedUsage = Math.floor(diffDays * dailyUsage);
+
+    // Ensure non-decreasing
+    const increment = Math.max(1, estimatedUsage); // Minimum 1 unit increment
+    const generatedReading = lastReadingValue + increment;
+    const submissionDate = today.toISOString().split('T')[0];
+
     const token = localStorage.getItem('token');
     const res = await fetch('/api/meter-readings', {
       method: 'POST',
@@ -150,15 +187,13 @@ export default function Dashboard() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ readingValue: Number(newReadingValue), readingDate: readingDate }),
+      body: JSON.stringify({ readingValue: generatedReading, readingDate: submissionDate }),
     });
 
     if (res.ok) {
       const data = await res.json();
       setMeterReadings([data.reading, ...meterReadings]);
-      setNewReadingValue('');
-      setReadingDate('');
-      setAlertMessage('Meter reading submitted successfully!');
+      setAlertMessage(`Meter reading submitted successfully! New Reading: ${generatedReading}`);
       setShowAlert(true);
     } else {
       const errorData = await res.json();
@@ -239,6 +274,79 @@ export default function Dashboard() {
       )
     );
   };
+
+  const analyticsData = useMemo(() => {
+    const dataMap = {};
+
+    // Helper to init date entry
+    const initDate = (date) => {
+      if (!dataMap[date]) dataMap[date] = { date, cylinder: 0, pipeline: 0 };
+    };
+
+    // Process Bookings (Cylinder)
+    allBookings.forEach(b => {
+      if (b.status !== 'Cancelled') {
+        const date = new Date(b.bookedOn).toISOString().split('T')[0];
+        initDate(date);
+        dataMap[date].cylinder += 1;
+      }
+    });
+
+    // Process Meter Readings (Pipeline Usage)
+    meterReadings.forEach(r => {
+      const date = new Date(r.readingDate).toISOString().split('T')[0];
+      initDate(date);
+      // specific logic: sum usage. If usage is not present, use readingValue difference? 
+      // The API stores 'usage'.
+      dataMap[date].pipeline += (r.usage || 0);
+    });
+
+    // Convert to array and sort
+    return Object.values(dataMap).sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [allBookings, meterReadings]);
+
+  // Prediction Logic
+  const predictionData = useMemo(() => {
+    if (meterReadings.length < 2) return [];
+
+    // Sort readings by date
+    const sortedReadings = [...meterReadings].sort((a, b) => new Date(a.readingDate) - new Date(b.readingDate));
+
+    // Calculate Average Daily Usage over history
+    // Simple approach: Total Usage / Total Days
+    const firstReading = sortedReadings[0];
+    const lastReading = sortedReadings[sortedReadings.length - 1];
+
+    const totalUsage = Math.abs(lastReading.readingValue - firstReading.readingValue);
+    const daysDiff = (new Date(lastReading.readingDate) - new Date(firstReading.readingDate)) / (1000 * 60 * 60 * 24);
+
+    if (daysDiff <= 0) return [];
+
+    const avgDailyUsage = totalUsage / daysDiff;
+
+    // Generate prediction for next 7 days
+    const predictions = [];
+    let accumulatedUsage = lastReading.readingValue;
+    const lastDate = new Date(lastReading.readingDate);
+
+    for (let i = 1; i <= 7; i++) {
+      const nextDate = new Date(lastDate);
+      nextDate.setDate(lastDate.getDate() + i);
+
+      // Add random variance (+/- 10%)
+      const variance = (Math.random() * 0.2) + 0.9;
+      const dailyPredicted = avgDailyUsage * variance;
+
+      // For chart, we might want to show Daily Usage trend or Cumulative?
+      // Let's show Likely Daily Consumption
+      predictions.push({
+        date: nextDate.toISOString().split('T')[0],
+        predictedUsage: parseFloat(dailyPredicted.toFixed(2))
+      });
+    }
+
+    return predictions;
+  }, [meterReadings]);
 
   const handleBookingStatusChange = async (bookingId, newStatus) => {
     const token = localStorage.getItem('token');
@@ -488,71 +596,154 @@ export default function Dashboard() {
 
       <div className={styles.content}>
         {selectedOption === 'personalInfo' && user.type !== 'admin' && (
-          <div className={styles.form}>
-            <h3 className={styles.headings}>Personal Information</h3>
-            <div className={styles.inputGroup}>
-              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Username</label>
-              <input
-                type="text"
-                placeholder={user.username}
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                className={styles.input}
-              />
+          <div className={styles.profileCard}>
+            {/* Header with Avatar Placeholder */}
+            <div className={styles.profileHeader}>
+              <div className={styles.avatarPlaceholder}>
+                {user.username.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 className={styles.headings} style={{ margin: 0 }}>My Profile</h3>
+                <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0.2rem 0 0 0' }}>Manage your account settings</p>
+              </div>
+              <div className={styles.profileActions}>
+                <button className={`${styles.actionButton} ${styles.btnPrimary}`}>Change avatar</button>
+                <button className={`${styles.actionButton} ${styles.btnSecondary}`}>Remove</button>
+              </div>
             </div>
-            <div className={styles.inputGroup}>
-              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Email</label>
-              <input type="email" value={user.email} disabled className={styles.input} style={{ background: '#f5f6fa', cursor: 'not-allowed' }} />
+
+            {/* Grid Layout Form */}
+            <div className={styles.profileGrid}>
+
+              {/* Username (First Name slot) */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Username</label>
+                <input
+                  type="text"
+                  placeholder={user.username}
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* Email (Last Name slot - re-purposed or just Email) */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Email Address</label>
+                <input
+                  type="email"
+                  value={user.email}
+                  disabled
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* Connection Type */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Connection Type</label>
+                <input
+                  type="text"
+                  value={user.connectionType}
+                  disabled
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* Phone (Placeholder if not exists) */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Phone Number</label>
+                <input
+                  type="text"
+                  value={user.phone || '+91 98765 43210'}
+                  disabled
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* Full Address - House */}
+              <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
+                <label className={styles.profileInputLabel}>House No / Street</label>
+                <input
+                  type="text"
+                  placeholder={user.address?.house || 'Enter House No'}
+                  value={newAddress.house}
+                  onChange={(e) => setNewAddress({ ...newAddress, house: e.target.value })}
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* City */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>City</label>
+                <input
+                  type="text"
+                  placeholder={user.address?.city || 'Enter City'}
+                  value={newAddress.city}
+                  onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* Pincode */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Zip / Postal Code</label>
+                <input
+                  type="text"
+                  placeholder={user.address?.pincode || 'Enter Pincode'}
+                  value={newAddress.pincode}
+                  onChange={(e) => setNewAddress({ ...newAddress, pincode: e.target.value })}
+                  className={styles.profileInput}
+                />
+              </div>
+
+              {/* Country (Static) */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Country</label>
+                <select className={styles.profileInput} style={{ appearance: 'auto' }} disabled>
+                  <option>India</option>
+                </select>
+              </div>
+
+              {/* Language (Static) */}
+              <div className={styles.inputGroup}>
+                <label className={styles.profileInputLabel}>Language</label>
+                <select className={styles.profileInput} style={{ appearance: 'auto' }}>
+                  <option>English</option>
+                  <option>Hindi</option>
+                </select>
+              </div>
+
+              {/* Bio (Static Placeholder to match design) */}
+              <div className={`${styles.inputGroup} ${styles.fullWidth}`}>
+                <label className={styles.profileInputLabel}>Bio</label>
+                <textarea
+                  className={styles.profileInput}
+                  rows="3"
+                  placeholder="Tell us a little about yourself..."
+                  style={{ resize: 'vertical' }}
+                ></textarea>
+              </div>
+
             </div>
-            <div className={styles.inputGroup}>
-              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Connection Type</label>
-              <input type="text" value={user.connectionType} disabled className={styles.input} style={{ background: '#f5f6fa', cursor: 'not-allowed' }} />
+
+            <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button className={`${styles.actionButton} ${styles.btnSecondary}`} onClick={() => window.location.reload()}>Cancel</button>
+              <button className={`${styles.actionButton} ${styles.btnPrimary}`} onClick={handleUpdateUser} style={{ padding: '0.6rem 1.5rem' }}>Save Changes</button>
             </div>
-            <h4 className={styles.subHeadings} style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>Address Details</h4>
-            <div className={styles.inputGroup}>
-              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>House No / Street</label>
-              <input
-                type="text"
-                placeholder={user.address?.house || 'Enter House No'}
-                value={newAddress.house}
-                onChange={(e) => setNewAddress({ ...newAddress, house: e.target.value })}
-                className={styles.input}
-              />
-            </div>
-            <div className={styles.inputGroup}>
-              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>City</label>
-              <input
-                type="text"
-                placeholder={user.address?.city || 'Enter City'}
-                value={newAddress.city}
-                onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
-                className={styles.input}
-              />
-            </div>
-            <div className={styles.inputGroup}>
-              <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Pincode</label>
-              <input
-                type="text"
-                placeholder={user.address?.pincode || 'Enter Pincode'}
-                value={newAddress.pincode}
-                onChange={(e) => setNewAddress({ ...newAddress, pincode: e.target.value })}
-                className={styles.input}
-              />
-            </div>
-            <button className={styles.button} onClick={handleUpdateUser}>Update Profile</button>
           </div>
         )}
 
         {selectedOption === 'bookings' && user.connectionType === 'Cylinder' && (
           <>
-            <div className={styles.form}>
-              <h3 className={styles.headings}>Request Refill</h3>
-              <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Select Item</label>
+            <div className={styles.card}>
+              <h3 className={styles.headings} style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem', marginBottom: '1.5rem' }}>Request Refill</h3>
+
+              <div className={styles.inputGroup} style={{ marginBottom: '1.5rem' }}>
+                <label className={styles.profileInputLabel}>Select Item</label>
                 <select
                   value={selectedItem}
                   onChange={(e) => setSelectedItem(e.target.value)}
-                  className={styles.select}
+                  className={styles.modernInput}
                 >
                   <option value="">Select Cylinder Type</option>
                   {inventory.map((item) => (
@@ -562,16 +753,23 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
-              <div className={styles.inputGroup}>
-                <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Booking Date</label>
+
+              <div className={styles.inputGroup} style={{ marginBottom: '2rem' }}>
+                <label className={styles.profileInputLabel}>Booking Date</label>
                 <input
                   type="date"
                   value={newBookingDate}
                   onChange={(e) => setNewBookingDate(e.target.value)}
-                  className={styles.input}
+                  min={new Date().toISOString().split('T')[0]}
+                  className={styles.modernInput}
                 />
               </div>
-              <button className={styles.button} onClick={handleCreateBooking}>Book Now</button>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className={`${styles.actionButton} ${styles.btnPrimary}`} onClick={handleCreateBooking} style={{ padding: '0.75rem 1.5rem', fontSize: '0.95rem' }}>
+                  Book Now
+                </button>
+              </div>
             </div>
 
             <h3 className={styles.headings} style={{ marginTop: '2rem' }}>Booking History</h3>
@@ -649,6 +847,28 @@ export default function Dashboard() {
                 </>
               )}
 
+              <div className={styles.card}>
+                <h3 className={styles.headings} style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem', marginBottom: '1.5rem' }}>Submit Meter Reading</h3>
+                <p style={{ marginBottom: '1.5rem', color: '#64748b', fontSize: '0.95rem' }}>
+                  Click the button below to automatically generate and submit the current meter reading.
+                </p>
+                <div className={styles.inputGroup} style={{ marginBottom: '1.5rem' }}>
+                  <label className={styles.profileInputLabel}>Reading Date</label>
+                  <input
+                    type="text"
+                    value={new Date().toLocaleDateString()}
+                    disabled
+                    className={styles.modernInput}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <button className={`${styles.actionButton} ${styles.btnPrimary}`} onClick={handleSubmitReading} style={{ padding: '0.75rem 1.5rem', fontSize: '0.95rem' }}>
+                    Generate & Submit Reading
+                  </button>
+                </div>
+              </div>
+
               <h4 className={styles.subHeadings} style={{ marginTop: '2rem', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Metered Usage History</h4>
               <table className={styles.table}>
                 <thead>
@@ -702,29 +922,7 @@ export default function Dashboard() {
                 </tbody>
               </table>
 
-              <div className={styles.form} style={{ marginTop: '2rem' }}>
-                <h3 className={styles.headings}>Submit Meter Reading</h3>
-                <div className={styles.inputGroup}>
-                  <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Reading Date</label>
-                  <input
-                    type="date"
-                    value={readingDate}
-                    onChange={(e) => setReadingDate(e.target.value)}
-                    className={styles.input}
-                  />
-                </div>
-                <div className={styles.inputGroup}>
-                  <label style={{ color: '#a0a0a0', marginBottom: '0.5rem' }}>Reading Value</label>
-                  <input
-                    type="number"
-                    placeholder="Enter current meter reading"
-                    value={newReadingValue}
-                    onChange={(e) => setNewReadingValue(e.target.value)}
-                    className={styles.input}
-                  />
-                </div>
-                <button className={styles.button} onClick={handleSubmitReading}>Submit Reading</button>
-              </div>
+
             </>
           )
         }
@@ -915,7 +1113,131 @@ export default function Dashboard() {
         {
           selectedOption === 'analytics' && user.type === 'admin' && (
             <>
-              <h3 className={styles.headings}>Analytics by Connection Type</h3>
+              <h3 className={styles.headings}>Analytics</h3>
+
+              {/* Side-by-Side Charts Container */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem', marginBottom: '2rem' }}>
+
+                {/* Chart 1: Cylinder Bookings */}
+                <div className={styles.card} style={{ height: '400px', padding: '1rem', marginBottom: 0 }}>
+                  <h4 style={{ marginBottom: '1rem', color: '#e67e22' }}>Cylinder Booking Trends</h4>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={analyticsData}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: '#64748b', fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        tickFormatter={(str) => {
+                          if (!str) return '';
+                          const date = new Date(str);
+                          return `${date.getDate()}/${date.getMonth() + 1}`;
+                        }}
+                      />
+                      <YAxis
+                        tick={{ fill: '#64748b', fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        label={{ value: 'Bookings', angle: -90, position: 'insideLeft', fill: '#e67e22' }}
+                      />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                        formatter={(value) => [value, 'Bookings']}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="cylinder" name="Cylinder Bookings" stroke="#e67e22" activeDot={{ r: 8 }} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Chart 2: Pipeline Usage */}
+                <div className={styles.card} style={{ height: '400px', padding: '1rem', marginBottom: 0 }}>
+                  <h4 style={{ marginBottom: '1rem', color: '#3498db' }}>Pipeline Usage Trends</h4>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={analyticsData}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: '#64748b', fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        tickFormatter={(str) => {
+                          if (!str) return '';
+                          const date = new Date(str);
+                          return `${date.getDate()}/${date.getMonth() + 1}`;
+                        }}
+                      />
+                      <YAxis
+                        tick={{ fill: '#64748b', fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        label={{ value: 'Usage (Units)', angle: -90, position: 'insideLeft', fill: '#3498db' }}
+                      />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                        formatter={(value) => [value, 'Units']}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="pipeline" name="Pipeline Usage" stroke="#3498db" activeDot={{ r: 8 }} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Chart 3: Predicted Usage */}
+              <div className={styles.card} style={{ height: '400px', padding: '1rem', marginBottom: '2rem', maxWidth: '800px', margin: '0 auto 2rem auto' }}>
+                <h4 style={{ marginBottom: '1rem', color: '#9b59b6' }}>Predicted Pipeline Usage (Next 7 Days)</h4>
+                {predictionData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={predictionData}
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: '#64748b', fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        tickFormatter={(str) => {
+                          if (!str) return '';
+                          const date = new Date(str);
+                          return `${date.getDate()}/${date.getMonth() + 1}`;
+                        }}
+                      />
+                      <YAxis
+                        tick={{ fill: '#64748b', fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        label={{ value: 'Predicted Units', angle: -90, position: 'insideLeft', fill: '#9b59b6' }}
+                      />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                        formatter={(value) => [value, 'Units']}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="predictedUsage" name="Forecasted Usage" stroke="#9b59b6" strokeWidth={2} strokeDasharray="5 5" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' }}>
+                    Insufficient usage history to generate predictions.
+                  </div>
+                )}
+              </div>
+            </>
+          )
+        }
+        {
+          false && user.type === 'admin' && (
+            <>
 
               {/* Pipeline Section */}
               <div className={styles.statCard} style={{ display: 'block', marginBottom: '2rem' }}>

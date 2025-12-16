@@ -62,6 +62,8 @@ export async function POST(req) {
         const { readingValue, readingDate } = await req.json();
         const userId = decoded.userId;
 
+
+
         const user = await User.findById(userId);
         if (!user) {
             return NextResponse.json({ message: 'User not found' }, { status: 404 });
